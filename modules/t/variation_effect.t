@@ -598,7 +598,7 @@ $transcript_tests->{$tf->stable_id}->{tests} = [
         alleles => 'CAT',
         start   => $cds_start+2,
         end     => $cds_start+1,
-        effects => [qw(start_retained_variant)],
+        effects => [qw(start_lost start_retained_variant)],
     }, {
         alleles => 'GCA',
         start   => $cds_start+2,
@@ -628,6 +628,12 @@ $transcript_tests->{$tf->stable_id}->{tests} = [
         end     => $cds_start+8,
         effects => [qw(missense_variant)],
         pep_alleles => 'DA/DT',
+    }, {
+        alleles => 'CAT',
+        start   => $cds_start-1,
+        end     => $cds_start+2,
+        effects => [qw(5_prime_UTR_variant start_lost)],
+        pep_alleles => '',
     }, {
         alleles => 'G',
         start   => $cds_start+4,
@@ -767,7 +773,7 @@ $transcript_tests->{$tf->stable_id}->{tests} = [
         alleles => '-',
         start   => $cds_start-4,
         end     => $cds_start,
-        effects => [qw(5_prime_UTR_variant start_retained_variant)],
+        effects => [qw(5_prime_UTR_variant start_retained_variant start_lost)],
     }, {
         comment => 'deletion overlapping STOP and 3\' UTR, stop retained',
         alleles => '-',
