@@ -326,7 +326,7 @@ $config = copy_config($base_config, {
     'B' => 10,
   }
 });
-($vf) = @{parse_line($config, qq{21 25587758 rs116645811 G A . . . GT 1|1 0|0})};
+($vf) = grep {$_->allele_string eq 'G/A'} @{parse_line($config, qq{21 25587758 rs116645811 G A . . . GT 1|1 0|0})};
 $cons = get_all_consequences($config, [$vf]);
 ok($cons && (grep {$_->{Extra}->{IND} eq 'A'} @$cons) && !(grep {$_->{Extra}->{IND} eq 'B'} @$cons), "vcf format - individual data");
 
