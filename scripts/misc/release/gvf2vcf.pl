@@ -136,6 +136,8 @@ sub init_data {
         'E_Cited' => 'Cited',
         'E_ESP' => 'ESP',
         'E_Phenotype_or_Disease' => 'Phenotype_or_Disease', 
+        'E_TOPMed' => 'TOPMed',
+        'E_gnomAD' => 'gnomAD',
         'E_ExAC' => 'ExAC',
     };
     $config->{evidence_value_to_abbr} = {
@@ -146,6 +148,8 @@ sub init_data {
         'Cited' => 'E_Cited',
         'ESP' => 'E_ESP',
         'Phenotype_or_Disease' => 'E_Phenotype_or_Disease',
+        'TOPMed' => 'E_TOPMed',
+        'gnomAD' => 'E_gnomAD',
         'ExAC' => 'E_ExAC',
     };
     $config->{clin_significance_to_abbr} = {
@@ -623,7 +627,19 @@ sub print_header {
     $year += 1900;    # correct the year
     $mon++;           # correct the month
     my $vcf_file_date = sprintf "%4d%02d%02d", $year, $mon, $mday;
-    my $vcf_source_field = "ensembl;version=$schema_version;url=http://e$schema_version\.ensembl.org/$species_name";
+    my $url = '';
+    my ($division) = @{$mca->list_value_by_key('species.division')};
+    if (!$division) {
+      $url = 'http://www.ensembl.org';
+    }
+    elsif ($division eq 'Ensembl') {
+      $url = 'http://e'.$schema_version.'.ensembl.org/'.$species_name;
+    } else {
+      $division =~ s/^Ensembl//;
+      $division = lc $division;
+      $url = 'http://'.$division.'.ensembl.org/'.$species_name;
+    }
+    my $vcf_source_field = "ensembl;version=$schema_version;url=$url";
     my $reference_info = "ftp://ftp.ensembl.org/pub/release-$schema_version/fasta/$species_name/dna/";
 
     # Meta-information
