@@ -161,7 +161,8 @@ while (my $set = $ref->get_record() ){
                 $set->{ReferenceClinVarAssertion}->{MeasureSet}->{Type} eq "Haplotype";
     $record{feature_info} = get_feature($set->{ReferenceClinVarAssertion}->{MeasureSet}->{Measure}, $record{Acc},$set->{ReferenceClinVarAssertion}->{MeasureSet}->{Type});
 
-    $record{submitters} = get_submitters($set->{ClinVarAssertion}, $record{feature_info});
+    ($record{submitters}, $record{submitter_disease})= get_submitters($set->{ClinVarAssertion}, $record{feature_info}, $record{disease});
+    $record{disease} =  $record{submitter_disease} if $record{disease} eq 'See cases';
 
     if (defined $structvar ){
       if( defined $record{feature_info}->{dbVar} && $record{feature_info}->{dbVar}->[0] =~/\d+/ ){
@@ -486,11 +487,31 @@ sub get_submitters{
 
   my $structure = shift;
   my $mainXrefs = shift;
+  my $disease   = shift;
 
   my @submitters;
 
   my $assertions = to_array($structure);
+  warn "multiple assertions and reference trait is 'See cases'" if $disease eq 'See cases' && scalar @$assertions > 1;
   foreach my $assert(@{$assertions}){
+    #if the Reference Trait is 'See cases' and this assertion has a different one, then save the submissions Trait as overall disease
+    if ($disease eq 'See cases' && defined $assert->{ObservedIn}){
+      my $observations = to_array($assert->{ObservedIn});
+      foreach my $obs (@{$observations}){
+        next if $disease ne 'See cases'; # use first trait encountered as variation disease
+        if (defined $obs->{TraitSet} && defined $obs->{TraitSet}->{Trait}){
+          my $traits = to_array($obs->{TraitSet}->{Trait});
+            foreach my $trait (@{$traits}){
+              next if $disease ne 'See cases'; # use first trait encountered as variation disease
+              if (defined $trait->{Name} && defined $trait->{Name}->{ElementValue} &&
+                  defined $trait->{Name}->{ElementValue}[1]->{Type} &&
+                  $trait->{Name}->{ElementValue}[1]->{Type} eq 'Preferred'){
+                    $disease = $trait->{Name}->{ElementValue}[0];
+              }
+            }
+        }
+      }
+    }
     push @submitters, $assert->{ClinVarSubmissionID}->[1]->{submitter}; # 1 as 0 is an empty entry, and 1 is the hash with submitter details
     # if submitter OMIM then get OMIM allelic variant ID and corresponding rsID from reference record
     next unless $assert->{ClinVarSubmissionID}->[1]->{submitter} eq 'OMIM';
@@ -524,7 +545,7 @@ sub get_submitters{
     }
   }
 
-  return \@submitters;
+  return (\@submitters, $disease);
 }
 
 sub to_array{
