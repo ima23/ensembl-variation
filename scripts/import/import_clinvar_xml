@@ -113,7 +113,7 @@ my %done;
 if (defined $done_file){
   open my $donelist, $done_file ||die "Unable to open list of variants already entered : $!\n";
   while(<$donelist>){
-    my $id = (split)[1];
+    chomp($_); my $id = $_;
     $done{$id} = 1;
   }
 }
@@ -166,13 +166,13 @@ while (my $set = $ref->get_record() ){
 
     if (defined $structvar ){
       if( defined $record{feature_info}->{dbVar} && $record{feature_info}->{dbVar}->[0] =~/\d+/ ){
-        warn "Importing SV :  $record{feature_info}->{dbVar}->[0]\n" if $DEBUG == 1;
+        warn "Importing SV :  $record{feature_info}->{dbVar}->[0]\n";
         import( \%record);
       }
     }
     else{
       if( exists $record{feature_info}->{dbSNP} && $record{feature_info}->{dbSNP}->[0] =~/\d+/ ){
-         warn "Importing Var :  $record{feature_info}->{dbSNP}->[0] ($record{Acc})\n" if $DEBUG == 1;
+         warn "Importing Var :  $record{feature_info}->{dbSNP}->[0] ($record{Acc})\n";
          import( \%record);
       }
       else{
@@ -181,7 +181,7 @@ while (my $set = $ref->get_record() ){
     	$message .= " on chr: $record{feature_info}->{Chr} "      if defined $record{feature_info}->{Chr} ;
     	$message .= " with HGVS: $record{feature_info}->{hgvs_g}" if defined $record{feature_info}->{hgvs_g} ;
     	$message .= " due to missing data ($record{Acc})\n";
-    	warn $message if $DEBUG == 1;
+	warn $message;
       }
     }
   };
