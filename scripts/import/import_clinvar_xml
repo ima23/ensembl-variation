@@ -838,7 +838,7 @@ sub enter_var{
   my $inherit    = shift;
 
    unless (defined $ref_allele && defined $alt_allele){
-     warn "ERROR: missing alleles for $data->{hgvs_g} / $dbSNP\n";
+     warn "ERROR: missing alleles for $data->{feature_info}->{hgvs_g} / $dbSNP\n";
      return undef;
    }
 
