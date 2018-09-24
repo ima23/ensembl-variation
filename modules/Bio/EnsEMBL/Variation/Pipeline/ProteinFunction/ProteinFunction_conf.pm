@@ -88,7 +88,7 @@ sub default_options {
 
         # include RefSeq transcripts, and edit with accompanying BAM?
         include_refseq          => 0,
-        bam                     => '/nfs/production/panda/ensembl/variation/data/dump_vep/interim_GRCh38.p10_knownrefseq_alignments_2017-01-13.bam',
+        bam                     => '/nfs/production/panda/ensembl/variation/data/dump_vep/GRCh38.p12_knownrefseq_alignments.bam',
 
         # GRCh37 bam
         # bam                     => '/nfs/production/panda/ensembl/variation/data/dump_vep/interim_GRCh37.p13_knownrefseq_alignments_2017-01-13.bam',        
@@ -100,7 +100,7 @@ sub default_options {
             -port   => 4521,
             -user   => 'ensadmin',
             -pass   => $self->o('password'),            
-            -dbname => $ENV{USER}.'_'.$self->o('pipeline_name').'_'. $self->o('species') .'_hive',
+            -dbname => $ENV{USER}.'_'.$self->o('pipeline_name').'_'. $self->o('species'),
             -driver => 'mysql',
         },
         
@@ -168,27 +168,40 @@ sub default_options {
 
         # the following parameters mean the same as for polyphen
 
-        sift_run_type           => UPDATE,
+        sift_run_type           => NONE,
 
         sift_use_compara        => 0,
 
         sift_max_workers        => 500,
 
-        dbnsfp_run_type         => NONE,
+        dbnsfp_run_type         => FULL,
+        dbnsfp_max_workers      => 250,
         dbnsfp_working          => $self->o('species_dir').'/dbnsfp_working',
         dbnsfp_file             => '/nfs/production/panda/ensembl/variation/data/dbNSFP/3.5a/dbNSFP3.5a.txt.gz',
+        dbnsfp_version          => '3.5.a',
+
+        cadd_run_type         => FULL,
+        cadd_max_workers      => 250,
+        cadd_working          => $self->o('species_dir').'/cadd_working',
+        cadd_file             => '/hps/nobackup2/production/ensembl/anja/CADD/whole_genome_SNVs.tsv.gz',
+        cadd_version          => 'GRCh38-v1.4',
 
     };
 }
 
-#sub pipeline_create_commands {
-#    my ($self) = @_;
-#    return [
-#        'mysql '.$self->dbconn_2_mysql('pipeline_db', 0).q{-e 'DROP DATABASE IF EXISTS }.$self->o('pipeline_db', '-dbname').q{'},
-#        @{$self->SUPER::pipeline_create_commands}, 
-#        'mysql '.$self->dbconn_2_mysql('pipeline_db', 1).q{-e 'INSERT INTO meta (meta_key, meta_value) VALUES ("hive_output_dir", "}.$self->o('output_dir').q{")'},
-#    ];
-#}
+sub pipeline_create_commands {
+  my ($self) = @_;
+  return [
+    @{$self->SUPER::pipeline_create_commands},  # inheriting database and hive tables' creation
+    $self->db_cmd('CREATE TABLE IF NOT EXISTS failure_reason (
+        translation_md5 char(32) NOT NULL,
+        error_msg varchar(255) NOT NULL,
+        analysis char(32) NOT NULL,
+        PRIMARY KEY (translation_md5),
+        UNIQUE KEY md5_error_analysis  (translation_md5, error_msg, analysis)
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1;'),
+  ];
+}
 
 sub resource_classes {
     my ($self) = @_;
@@ -218,6 +231,9 @@ sub pipeline_analyses {
                 sift_run_type   => $self->o('sift_run_type'),
                 pph_run_type    => $self->o('pph_run_type'),
                 dbnsfp_run_type => $self->o('dbnsfp_run_type'),
+                cadd_run_type   => $self->o('cadd_run_type'),
+                dbnsfp_version  => $self->o('dbnsfp_version'),
+                cadd_version    => $self->o('cadd_version'),
                 include_lrg     => $self->o('include_lrg'),
                 polyphen_dir    => $self->o('pph_dir'),
                 sift_dir        => $self->o('sift_dir'),                
@@ -234,6 +250,7 @@ sub pipeline_analyses {
                 2 => [ 'run_polyphen' ],
                 3 => [ 'run_sift' ],
                 4 => [ 'run_dbnsfp' ],
+                5 => [ 'run_cadd' ],
             },
         },
 
@@ -313,7 +330,21 @@ sub pipeline_analyses {
             -failed_job_tolerance => 0,
             -max_retry_count => 0,
             -input_ids      => [],
-            -hive_capacity  => $self->o('sift_max_workers'),
+            -hive_capacity  => $self->o('dbnsfp_max_workers'),
+            -rc_name        => 'medmem',
+        },
+
+        {   -logic_name     => 'run_cadd',
+            -module         => 'Bio::EnsEMBL::Variation::Pipeline::ProteinFunction::RunCADD',
+            -parameters     => {
+                cadd_working => $self->o('cadd_working'),
+                cadd_file    => $self->o('cadd_file'),
+                @common_params,
+            },
+            -failed_job_tolerance => 0,
+            -max_retry_count => 0,
+            -input_ids      => [],
+            -hive_capacity  => $self->o('cadd_max_workers'),
             -rc_name        => 'medmem',
         },
 

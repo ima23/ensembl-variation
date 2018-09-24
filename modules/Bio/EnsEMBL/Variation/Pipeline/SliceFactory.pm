@@ -1,6 +1,3 @@
-
-
-
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
@@ -31,59 +28,39 @@ limitations under the License.
 
 =cut
 
-=head1 NAME
-
-Bio::EnsEMBL::Variation::Utils::Date
-
-=head1 DESCRIPTION
-
-=cut
-
-package Bio::EnsEMBL::Variation::Utils::Date;
+package Bio::EnsEMBL::Variation::Pipeline::SliceFactory;
 
 use strict;
 use warnings;
-use base qw(Exporter);
-use POSIX;
 
-our @EXPORT_OK = qw(run_date log_time);
+use base qw(Bio::EnsEMBL::Variation::Pipeline::BaseVariationProcess);
 
+sub fetch_input {
+    my $self = shift;
+    my $species = $self->param_required('species');
 
-=head2 run_date
+    my $cdba = $self->get_adaptor($species, 'core');
 
+    my $sa = $cdba->get_SliceAdaptor or die 'Failed to get SliceAdaptor';
 
-  Example     : my $run_date = run_date();
-  Description : returns the current date in a standard format to use in the meta
-                table as a process run date
-  ReturnType  : String
-  Exceptions  : None
-  Caller      : General
+    my $slices = $sa->fetch_all('toplevel', undef, 0, 1);
+    my @slice_names = ();
 
+   if ($self->param('debug')) {
+      my $slice = $sa->fetch_by_region('chromosome', 12);
+      push @slice_names, {slice_name => $slice->seq_region_name };
+    } else {
+      foreach my $slice (@$slices) {
+        push @slice_names, { slice_name => $slice->seq_region_name}; 
+      } 
+    }
 
-=cut
-
-sub run_date{
-
-    return strftime("%Y-%m-%d", localtime);
-}
-
-=head2 log_time
-
-
-  Example     : my $filename = $process_name . log_time() . 'txt';
-  Description : returns the current date/time in a standard format to use in
-                output files
-  ReturnType  : String
-  Exceptions  : None
-  Caller      : General
-
-
-=cut
-
-sub log_time{
-
-    return strftime("%Y-%m-%d_%H%M%S", localtime);
+    $self->dataflow_output_id(\@slice_names, 2);
 }
 
 
+sub write_output {
+    my $self = shift;
+    return;
+}
 1;

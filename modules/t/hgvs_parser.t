@@ -275,7 +275,13 @@ my %test_output = (
             "",
             "convert single base inv to subs"
            ],
-
+     37 =>  ["NC_000017.10:g.7123233_7123234insCAGGACGTGAGGCGTGTT",
+            "CAGGACGTGAGGCGTGTT",
+            "ENST00000356839.4:c.68_69insCAGGACGTGAGGCGTGTT",
+            "CAGGACGTGAGGCGTGTT",
+            "ENSP00000349297.4:p.Pro23_Gly24insArgThrTer",
+            "insertion, stop gained part way through inserted seq"
+            ],
 
 );
 
@@ -426,6 +432,7 @@ my %test_input = (
      20 => ["NC_000007.13:g.143175210G>A",
             "ENST00000408916.1:c.245G>A",
             "ENSP00000386201.1:p.Arg82Gln",
+            "ENST00000408916.1:p.Arg82Gln",  ## malformed HGVS seen in some dbs
            ],  
 
      21 => ["NC_000012.11:g.102056227G>A",
@@ -462,6 +469,10 @@ my %test_input = (
             "NC_000019.9:g.7706085T>A",
             "ENST00000320400.4:c.1186T>A",
            ],
+     37 =>  ["NC_000017.10:g.7123233_7123234insCAGGACGTGAGGCGTGTT",
+            "ENST00000356839.4:c.68_69insCAGGACGTGAGGCGTGTT",
+            "ENSP00000349297.4:p.Pro23_Gly24insArgThrTerGly",
+            ],
 
 );
 
@@ -505,7 +516,7 @@ my %test_input_shifted = (
             "ENST00000293261.2:c.1376_1378delCCT",
             "ENSP00000293261.2:p.Ser459del",
             "NC_000019.9:g.48836480_48836482del"
-           ]
+           ],
 );
 
 ## results which change on left-shifting - not shifted

@@ -30,6 +30,8 @@ ALTER TABLE allele ADD FOREIGN KEY (allele_code_id) REFERENCES allele_code(allel
 ALTER TABLE allele ADD FOREIGN KEY (population_id) REFERENCES population(population_id);
 ALTER TABLE allele ADD FOREIGN KEY (frequency_submitter_handle) REFERENCES submitter_handle(handle_id);
 
+ALTER TABLE allele_synonym ADD FOREIGN KEY (variation_id) REFERENCES variation(variation_id);
+
 ALTER TABLE associate_study ADD FOREIGN KEY (study1_id) REFERENCES study(study_id);
 ALTER TABLE associate_study ADD FOREIGN KEY (study2_id) REFERENCES study(study_id);
 
@@ -124,8 +126,6 @@ ALTER TABLE variation ADD FOREIGN KEY (class_attrib_id) REFERENCES attrib(attrib
 
 ALTER TABLE phenotype_feature ADD FOREIGN KEY (source_id) REFERENCES source(source_id);
 ALTER TABLE phenotype_feature ADD FOREIGN KEY (study_id) REFERENCES study(study_id);
-ALTER TABLE phenotype_feature ADD FOREIGN KEY (object_id) REFERENCES variation(name);
-ALTER TABLE phenotype_feature ADD FOREIGN KEY (object_id) REFERENCES structural_variation(variation_name);
 ALTER TABLE phenotype_feature ADD FOREIGN KEY (phenotype_id) REFERENCES phenotype(phenotype_id);
 ALTER TABLE phenotype_feature ADD FOREIGN KEY (seq_region_id) REFERENCES seq_region(seq_region_id);
 
