@@ -100,7 +100,7 @@ sub store {
             allele_string,
             somatic,
             consequence_types,
-            motif_name,
+            binding_matrix_stable_id,
             motif_start,
             motif_end,
             motif_score_delta,
@@ -116,7 +116,7 @@ sub store {
             $allele->allele_string,
             $mfv->variation_feature->is_somatic,
             (join ',', map { $_->SO_term } @{ $allele->get_all_OverlapConsequences }),
-            $mfv->feature->stable_id,
+            $mfv->feature->binding_matrix->stable_id,
             $allele->motif_start,
             $allele->motif_end,
             $allele->motif_score_delta,
@@ -320,7 +320,7 @@ sub _objs_from_sth {
         $allele_string,
         $somatic,
         $consequence_types,
-        $motif_name,
+        $binding_matrix_stable_id,
         $motif_start,
         $motif_end,
         $motif_score_delta,
@@ -335,7 +335,7 @@ sub _objs_from_sth {
         \$allele_string,
         \$somatic,
         \$consequence_types,
-        \$motif_name,
+        \$binding_matrix_stable_id,
         \$motif_start,
         \$motif_end,
         \$motif_score_delta,
@@ -355,7 +355,7 @@ sub _objs_from_sth {
                 _feature_stable_id           => $feature_stable_id,
                 regulatory_feature_stable_id => $feature_stable_id,
                 motif_feature_id             => $motif_feature_id,
-                motif_name                   => $motif_name,
+                binding_matrix_stable_id     => $binding_matrix_stable_id,
                 adaptor                      => $self,
             });
             
@@ -406,7 +406,7 @@ sub _columns {
         allele_string
         somatic 
         consequence_types 
-        motif_name
+        binding_matrix_stable_id
         motif_start
         motif_end
         motif_score_delta

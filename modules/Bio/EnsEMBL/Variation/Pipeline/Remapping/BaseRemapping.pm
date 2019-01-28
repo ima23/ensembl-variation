@@ -34,23 +34,44 @@ use warnings;
 
 use base qw(Bio::EnsEMBL::Hive::Process);
 
+use Bio::EnsEMBL::DBSQL::DBAdaptor;
+use Bio::EnsEMBL::Variation::DBSQL::DBAdaptor;
 use Bio::EnsEMBL::Registry;
+use Bio::Perl;
 
-sub fetch_input {
+sub get_newasm_variation_database_connection {
   my $self = shift;
+  return $self->_get_database_connection('variation', 'registry_file_newasm');
+}
+
+sub get_oldasm_variation_database_connection {
+  my $self = shift;
+  return $self->_get_database_connection('variation', 'registry_file_oldasm');
+}
+
+sub get_newasm_core_database_connection {
+  my $self = shift;
+  return $self->_get_database_connection('core', 'registry_file_newasm');
+}
+
+sub get_oldasm_core_database_connection {
+  my $self = shift;
+  return $self->_get_database_connection('core', 'registry_file_oldasm');
+}
+
+sub _get_database_connection {
+  my $self = shift;
+  my $type = shift;
+  my $registry_file = shift;
   my $registry = 'Bio::EnsEMBL::Registry';
-  $registry->load_all($self->param('registry_file_newasm'));
-  my $vdba = $registry->get_DBAdaptor($self->param('species'), 'variation');
-  my $cdba = $registry->get_DBAdaptor($self->param('species'), 'core');
-  $self->param('vdba_newasm', $vdba);
-  $self->param('cdba_newasm', $cdba);
+  $registry->load_all($self->param($registry_file));
+  return  $registry->get_DBAdaptor($self->param('species'), $type);
+}
 
-  $registry->load_all($self->param('registry_file_oldasm'));
-  $vdba = $registry->get_DBAdaptor($self->param('species'), 'variation');
-  $cdba = $registry->get_DBAdaptor($self->param('species'), 'core');
-  $self->param('vdba_oldasm', $vdba);
-  $self->param('cdba_oldasm', $cdba);
-
+sub test_bioperl_version {
+  my $self = shift;
+  my $bioperl_version = Bio::Perl->VERSION;
+  die "At least Bio::Perl 1.006924 required" if ($bioperl_version < 1.006924);
 }
 
 sub read_line {
@@ -178,6 +199,68 @@ sub run_query {
   }
   $sth->finish();
   return \@results;
+}
+
+sub get_sorted_column_names {
+  my $self = shift;
+  my $dba = shift;
+  my $table = shift;
+  my $exclude = shift;
+  my $dbc  = $dba->dbc;
+  my $dbname = $dba->dbc->dbname();
+  my $dbh = $dbc->db_handle;
+  my $sth = $dbh->prepare(qq{
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = '$dbname'
+      AND TABLE_NAME = '$table';
+      });
+  $sth->execute();
+
+  my @column_names = ();
+  while (my @name = $sth->fetchrow_array) {
+    if (!$exclude->{$name[0]}) {
+      push @column_names, $name[0];
+    }
+  }
+  $sth->finish();
+  @column_names = sort @column_names;
+  return \@column_names;
+}
+
+sub table_exists {
+  my $self = shift;
+  my $table_name = shift;
+  my $vdba = shift;
+  my $dbc  = $vdba->dbc;
+  my $dbh = $dbc->db_handle;
+  my $sth = $dbh->prepare(qq{
+    SHOW TABLES LIKE ?;
+  });
+  $sth->execute($table_name);
+  my @rows = @{$sth->fetchall_arrayref};
+  $sth->finish;
+  return scalar @rows;
+}
+
+sub rename_mapped_feature_table {
+  my $self = shift;
+  my $feature_table = $self->param('feature_table');
+  my $result_table = $self->param('feature_table_mapping_results');
+
+  my $vdba_newasm = $self->get_newasm_variation_database_connection;
+  my $dbh  = $vdba_newasm->dbc->db_handle;
+
+  # only create before_remapping table once
+  if (!$self->table_exists("before_remapping_$feature_table", $vdba_newasm) && $self->table_exists($feature_table, $vdba_newasm)) {
+    $dbh->do("RENAME TABLE $feature_table TO before_remapping_$feature_table;") or die $!;
+  }
+
+  if ($self->table_exists($result_table, $vdba_newasm)) {
+    # drop feature table if it exists
+    # if it exists at this point it means that before_remapping_feature_table has been created and this is another remapping run
+    $dbh->do("DROP TABLE IF EXISTS $feature_table;") or die $!;
+    $dbh->do("RENAME TABLE $result_table TO $feature_table;") or die $!;
+  }
 }
 
 1;
