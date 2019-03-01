@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -99,11 +99,11 @@ sub fetch_input {
     # Also truncate the protein_function_prediction + _attrib tables if in sift FULL mode
     if ($sift_run_type == FULL) {
       $var_dba->dbc->do(qq/DELETE pfp.* FROM protein_function_predictions pfp, attrib a WHERE pfp.analysis_attrib_id = a.attrib_id AND a.value = 'sift'/);
-      $var_dba->dbc->do(qq/DELETE pfp.* FROM protein_function_predictions_attrib pfpa, attrib a WHERE pfp.analysis_attrib_id = a.attrib_id AND a.value = 'sift'/);
+      $var_dba->dbc->do(qq/DELETE pfpa.* FROM protein_function_predictions_attrib pfpa, attrib a WHERE pfpa.analysis_attrib_id = a.attrib_id AND a.value = 'sift'/);
     }
     if ($pph_run_type == FULL) {
       $var_dba->dbc->do(qq/DELETE pfp.* FROM protein_function_predictions pfp, attrib a WHERE pfp.analysis_attrib_id = a.attrib_id AND a.value IN ('polyphen_humdiv', 'polyphen_humvar')/);
-      $var_dba->dbc->do(qq/DELETE pfp.* FROM protein_function_predictions_attrib pfpa, attrib a WHERE pfp.analysis_attrib_id = a.attrib_id AND a.value IN ('polyphen_humdiv', 'polyphen_humvar')/);
+      $var_dba->dbc->do(qq/DELETE pfpa.* FROM protein_function_predictions_attrib pfpa, attrib a WHERE pfpa.analysis_attrib_id = a.attrib_id AND a.value IN ('polyphen_humdiv', 'polyphen_humvar')/);
     }
 
     my $add_mapping_sth = $var_dba->dbc->prepare(qq{

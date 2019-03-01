@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2018] EMBL-European Bioinformatics Institute
+# Copyright [2016-2019] EMBL-European Bioinformatics Institute
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,6 +82,9 @@ if ($mfv && (scalar(@{$mfv->consequence_type}) > 0) ) {
 
 my $consequence_types = join(',', sort @{$mfv->consequence_type});
 ok($consequence_types eq 'TF_binding_site_variant', 'Print consequence types for motif_feature_variation');
+
+my $binding_matrix_stable_id = $mfv->binding_matrix_stable_id;
+ok($binding_matrix_stable_id eq 'ENSPFM0402', 'Compare binding_matrix_stable_id');
 
 my $motif_name = $mfv->motif_name;
 ok($motif_name eq 'ENSM00000000001', 'Compare motif name');

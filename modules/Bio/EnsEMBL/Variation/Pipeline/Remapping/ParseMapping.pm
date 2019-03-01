@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -127,7 +127,7 @@ sub parse_read_location {
       $query_name = "$id:$type";
     }
     unless ($seq_region_name && $t_start && $t_end){
-      print $fh_failed_mappings join("\t", 'NO_MAPPING'), "\n";
+      print $fh_failed_mappings join("\t", 'NO_MAPPING missing value', $query_name, $seq_region_name), "\n";
       next;
     } 
 
@@ -161,7 +161,7 @@ sub parse_read_location {
       $relative_alignment_score = ($length_query_seq - ($clipped_nucleotides + $edit_distance)) / $length_query_seq;	
       $relative_alignment_score = sprintf("%.5f", $relative_alignment_score);
     }
-    if ($relative_alignment_score > 0.8) {
+    if ($relative_alignment_score > 0.5) {
       print $fh_mappings join("\t", $query_name, $seq_region_name, $t_start, $t_end, $t_strand, $map_weight, $relative_alignment_score, $cigar_string), "\n";
     } else {
       print $fh_failed_mappings join("\t", 'LOW_SCORE', $query_name, $seq_region_name, $t_start, $t_end, $q_start, $q_end, $t_strand, $map_weight, $relative_alignment_score, $diff, $cigar_string), "\n";

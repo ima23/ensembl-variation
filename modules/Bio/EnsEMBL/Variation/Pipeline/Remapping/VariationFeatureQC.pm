@@ -1,6 +1,6 @@
 =head1 LICENSE
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -41,8 +41,8 @@ sub run {
   my $self = shift;
   my $file_number = $self->param('file_number');
   my $fasta_db = $self->param('fasta_db');
-  my $vdba = $self->param('vdba_newasm');
-  my $vdba_oldasm = $self->param('vdba_oldasm');
+  my $vdba = $self->get_newasm_variation_database_connection;
+  my $vdba_oldasm = $self->get_oldasm_variation_database_connection;
   my $qc_mapped_features_dir = $self->param('qc_mapped_features_dir');
   my $qc_update_features_dir = $self->param('qc_update_features_dir');
   my $qc_failure_reasons_dir = $self->param('qc_failure_reasons_dir');

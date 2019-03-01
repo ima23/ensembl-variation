@@ -2,7 +2,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1745,6 +1745,10 @@ sub fetch_by_hgvs_notation {
  
   ########################### Check & split input ###########################
 
+  #Clean the HGVS notation to avoid '(gene)' or '(p.)'  
+  $hgvs =~ s/\(.+\):/:/; 
+  $hgvs =~ s/\(p\..+\)//;   
+
   #Split the HGVS notation into the reference, notation type and variation description
   my ($reference,$type,$description) = $hgvs =~ m/^([^\:]+)\:.*?([cgmnrp]?)\.?(.*?[\*\-0-9]+.*)$/i;
 
@@ -1752,7 +1756,7 @@ sub fetch_by_hgvs_notation {
   throw ("Could not parse the HGVS notation $hgvs") 
       unless (defined($reference) && defined($type) && defined($description));
 
-      
+
   my $extra;
   if($description =~ m/\(.+\)/) {        
     ($description, $extra) = $description=~ /(.+?)(\(.+\))/;        
@@ -1853,10 +1857,15 @@ sub fetch_by_hgvs_notation {
       if($reference =~ /ENST|NM/){
          push @transcripts, $transcript_adaptor->fetch_by_stable_id($reference);
       }
-      else{
+      # Fetch as UniProt ID or gene
+      else {
+        # Try to see if the ID is from UniProt
+        push @transcripts, @{$transcript_adaptor->fetch_all_by_external_name($reference,"Uniprot/SWISSPROT")};
         #try and fetch via gene
-        # 3rd arg: return all possible transcripts here but for VEP report 1st with matching ref base
-        push @transcripts, @{$self->_get_gene_transcripts($transcript_adaptor, $reference, 1)};
+        if (! @transcripts) {
+          # 3rd arg: return all possible transcripts here but for VEP report 1st with matching ref base
+          push @transcripts, @{$self->_get_gene_transcripts($transcript_adaptor, $reference, 1)};
+        }
       }
     }
     else {
@@ -2347,5 +2356,202 @@ sub fetch_all_by_location_identifier {
 
   return $vfs;
 }
+
+=head2 fetch_by_spdi_notation
+
+    Arg[1]      : String $spdi
+    Example     : my $spdi = 'NC_000016.9:68644751:T:A';
+                  $vf = $vf_adaptor->fetch_by_spdi_notation($spdi);
+    Description : Parses a SPDI notation and tries to create a VariationFeature object
+    based on the notation. The object will have a Variation and Alleles attached.
+    ReturnType  : Bio::EnsEMBL::Variation::VariationFeature, undef on failure
+    Exceptions  : thrown on error
+    Caller      : general
+    Status      : Stable
+
+=cut
+
+sub fetch_by_spdi_notation{ 
+  my $self = shift; 
+
+  my ($spdi, $user_slice_adaptor, $user_transcript_adaptor, $multiple_ok, $replace_ref) = rearrange([qw(
+    SPDI
+    SLICE_ADAPTOR
+    TRANSCRIPT_ADAPTOR
+    MULTIPLE_OK
+    REPLACE_REF
+  )], @_);
+
+  ########################### Check & split input ########################### 
+  my ($sequence_id, $position, $deleted_seq, $inserted_seq) = split /:/, $spdi; 
+
+  # count number of elements   
+  my $count_separator = () = $spdi =~ m/\:/g; 
+
+  if($count_separator > 3){ throw ("Could not parse the SPDI notation $spdi. Too many elements present"); } 
+  elsif($count_separator < 3){ throw ("Could not parse the SPDI notation $spdi. Too few elements present"); } 
+
+  # strip version number from reference 
+  if($sequence_id =~ m/\./i){
+    $sequence_id =~ s/\.\d+//g;
+  } 
+
+  # check if position is a number 
+  my $check_position = $position =~ m/^\d+\z/i; 
+
+  # check deleted sequence (digit, string) 
+  my $check_deleted_seq = $deleted_seq =~ m/^\w+$/;
+  my $check_deleted_seq_digit = $deleted_seq =~ m/^[0-9]+\z/i; # match if deleted sequence is digit  
+  my $check_deleted_seq_letters = $deleted_seq =~ m/^([ACGTN]+)$/i; # match if deleted sequence is A, C, T, G or N 
+ 
+  # check inserted sequence (digit, string) 
+  my $check_inserted_seq = $inserted_seq =~ m/^\w+$/; 
+  my $check_inserted_seq_letters = $inserted_seq =~ m/^([ACGTN]+)$/i; # match if inserted sequence is A, C, T, G or N  
+
+  throw ("Could not parse the SPDI notation $spdi")  
+    unless (defined($sequence_id) && $sequence_id ne '' && defined($position) && $check_position ne '' && $position ne '' && defined($deleted_seq) && defined($inserted_seq) 
+    && ($check_deleted_seq || $deleted_seq eq '') && ($check_inserted_seq || $inserted_seq eq '')); 
+
+  #######################  extract genomic coordinates and reference seq allele  ####################### 
+
+  my ($start, $end, $strand, $ref_allele, $alt_allele); 
+
+  $start = $position + 1; 
+  $strand = 1; ## strand should be genome strand for SPDI genomic notation
+
+  # Get a slice adaptor to enable check of supplied reference allele
+  my $slice_adaptor = $user_slice_adaptor || $self->db()->dnadb()->get_SliceAdaptor(); 
+  my $slice = $slice_adaptor->fetch_by_region('chromosome', $sequence_id ) || $slice_adaptor->fetch_by_region(undef, $sequence_id);  
+
+  # First checks if deleted and inserted sequences are not 0 (invalid notation)  
+  if($deleted_seq eq '0' && $inserted_seq eq '0'){
+    throw ("Could not parse the SPDI notation $spdi. SPDI notation not supported."); 
+  } 
+
+  # Variation is an insertion 
+  elsif(($deleted_seq eq '' || $deleted_seq eq '0') && $check_inserted_seq_letters){ 
+    $end = $position; 
+    $ref_allele = '-';   
+    $alt_allele = uc $inserted_seq; 
+  } 
+
+  # Variation is a deletion 
+  elsif(($check_deleted_seq_digit || $check_deleted_seq_letters) && ($inserted_seq eq '' || $inserted_seq eq '0')){ 
+
+    if($check_deleted_seq_letters){
+      $ref_allele = uc $deleted_seq;
+      $end = $position + length($deleted_seq); 
+      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end);
+
+      throw ("Reference allele extracted from $sequence_id:$start-$end ($refseq_allele) does not match reference allele given by SPDI notation $spdi ($ref_allele)") 
+        unless ($ref_allele eq $refseq_allele);
+    } 
+    else{
+      $end = $position + $deleted_seq;
+      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end);
+    }   
+    $alt_allele = '-';
+  } 
+
+  # Variation is a substitution or indel 
+  elsif(($check_deleted_seq_digit || $check_deleted_seq_letters) && $check_inserted_seq_letters){ 
+
+    # Indel or substitution (deleted and inserted sequences are letters) 
+    if($check_deleted_seq_letters){ 
+      $ref_allele = uc $deleted_seq; 
+      $end = ($check_deleted_seq_digit) ? $position : $position + length($deleted_seq); 
+
+      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end); 
+      
+      throw ("Reference allele extracted from $sequence_id:$start-$end ($refseq_allele) does not match reference allele given by SPDI notation $spdi ($ref_allele)")
+        unless ($ref_allele eq $refseq_allele); 
+    }
+
+    # Substitution (deleted sequence is numeric) 
+    elsif($check_deleted_seq_digit){ 
+      my $inserted_seq_length = length($inserted_seq);
+      throw ("Could not parse the SPDI notation $spdi. Deleted sequence length ($deleted_seq) does not match inserted sequence length ($inserted_seq_length).") 
+        unless ($inserted_seq_length == $deleted_seq);
+ 
+      $end = $position + $deleted_seq; 
+      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end); # get the correct reference allele  
+    } 
+
+    $alt_allele = uc $inserted_seq; 
+    throw ("Reference allele given by SPDI notation $spdi ($ref_allele) matches alt allele given by SPDI notation $spdi ($alt_allele)")
+      unless ($ref_allele ne $alt_allele); 
+  } 
+
+  # Variation is not valid 
+  else{
+    throw ("Could not parse the SPDI notation $spdi. SPDI notation not supported.");    
+  } 
+
+  my $result;
+
+  $result = $self->_spdi_from_components(
+    $spdi, $sequence_id, $slice, $ref_allele, 
+    $alt_allele, $start, $end, $strand 
+  );    
+
+  return $multiple_ok ? [$result] : $result;  
+} 
+
+# Get the reference allele for the genomic position 
+sub get_reference_allele{ 
+  my ($slice_adaptor, $sequence_id, $start, $end) = @_; 
+
+  # get a slice for the variant genomic coordinate 
+  my $slice = $slice_adaptor->fetch_by_region('chromosome',$sequence_id,$start,$end);
+
+  if(!ref($slice) || !$slice->isa('Bio::EnsEMBL::Slice')) {
+    throw('Bio::EnsEMBL::Slice expected. Sequence name not valid'); 
+  } 
+
+  my $re_allele = $slice->seq(); 
+    
+  return $re_allele;    
+}
+
+sub _spdi_from_components {  
+  my ($self, $spdi, $sequence_id, $slice, $ref_allele, $alt_allele, $start, $end, $strand) = @_;  
+
+  #######################  check alleles  ####################### 
+    
+  ####################### Create objects #######################
+
+  #Create Allele objects
+  my @allele_objs;
+  if($self->db) {
+
+    foreach my $allele ($ref_allele,$alt_allele) {
+      push(@allele_objs,Bio::EnsEMBL::Variation::Allele->new('-adaptor' => $self, '-allele' => $allele)); 
+    }
+  }
+
+  #Create a variation object. Use the SPDI string as its name
+  my $variation = Bio::EnsEMBL::Variation::Variation->new(
+    '-adaptor' => $self->db ? $self->db()->get_VariationAdaptor() : undef,
+    '-name'    => $spdi, 
+    '-source'  => 'Parsed from SPDI notation',
+    '-alleles' => \@allele_objs
+  );
+
+  #Create a variation feature object
+  my $variation_feature = Bio::EnsEMBL::Variation::VariationFeature->new(
+    '-adaptor'       => $self,
+    '-start'         => $start,
+    '-end'           => $end,
+    '-strand'        => $strand,
+    '-slice'         => $slice,
+    '-map_weight'    => 1,
+    '-variation'     => $variation,
+    '-allele_string' => "$ref_allele/$alt_allele"
+  );
+    
+  if($DEBUG==1){print "Created object $spdi allele_string: $ref_allele/$alt_allele, start:$start, end:$end\n";}
+
+  return $variation_feature;
+} 
 
 1;

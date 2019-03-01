@@ -2,7 +2,7 @@
 =head1 LICENSE
 
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2018] EMBL-European Bioinformatics Institute
+# Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -355,6 +355,14 @@ sub dump_data {
                         @vfs = ();
                         $count = 0;
                     }
+                }
+                if (@vfs) {
+                  if ($config->{incl_consequences}) {
+                      $gvf_lines = add_variant_effect($config, \@vfs);
+                  } elsif ($config->{population}) {
+                      $gvf_lines = add_frequencies($config, \@vfs);
+                  }
+                  annotate_gvf_lines($config, $gvf_lines);
                 }
             } else {
                 while (my $vf = $vf_it->next) {

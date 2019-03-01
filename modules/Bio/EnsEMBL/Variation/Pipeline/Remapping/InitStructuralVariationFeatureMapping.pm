@@ -1,6 +1,6 @@
 =head1 LICENSE
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -82,7 +82,7 @@ sub generate_svf_mapping_input {
         push @all_coords, "seq_region_name=$seq_region_name";
         foreach my $coord_name (qw/outer_start seq_region_start inner_start inner_end seq_region_end outer_end/) {
           my $coord = $data->{$coord_name};
-          if ($coord ne '\N') {
+          if ($coord ne '\N') { # some coord types (outer_*, inner_*) are not always defined for structural variations
             push @all_coords, "$coord_name=$coord";
             my $query_sequence = $self->get_query_sequence($seq_region_name, $coord, $coord + 200, $strand);
             my $id = ">$feature_id-$coord_name";

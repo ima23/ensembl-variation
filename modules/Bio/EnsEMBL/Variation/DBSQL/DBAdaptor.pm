@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -73,7 +73,9 @@ sub get_available_adaptors{
       'Allele'                                 => 'Bio::EnsEMBL::Variation::DBSQL::AlleleAdaptor',
       'AlleleFeature'                          => 'Bio::EnsEMBL::Variation::DBSQL::AlleleFeatureAdaptor',
       'Attribute'                              => 'Bio::EnsEMBL::Variation::DBSQL::AttributeAdaptor',
+      'CADDAnnotation'                         => 'Bio::EnsEMBL::Variation::DBSQL::CADDAnnotationAdaptor',
       'GenotypeCode'                           => 'Bio::EnsEMBL::Variation::DBSQL::GenotypeCodeAdaptor',
+      'GERPAnnotation'                         => 'Bio::EnsEMBL::Variation::DBSQL::GERPAnnotationAdaptor',
       'Individual'                             => 'Bio::EnsEMBL::Variation::DBSQL::IndividualAdaptor',
       'IndividualGenotype'                     => 'Bio::EnsEMBL::Variation::DBSQL::IndividualGenotypeAdaptor',
       'IndividualGenotypeFeature'              => 'Bio::EnsEMBL::Variation::DBSQL::IndividualGenotypeFeatureAdaptor',

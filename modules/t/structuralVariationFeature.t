@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2018] EMBL-European Bioinformatics Institute
+# Copyright [2016-2019] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -116,6 +116,7 @@ ok($svf->source_name eq $source_name,               'svf -> source_name');
 ok($svf->source_description eq $source_description, 'svf -> source_description');
 ok($svf->source_version eq $source_version,         'svf -> source_version');
 is($svf->feature_so_acc, 'SO:0001537', 'StructuralVariationFeature feature SO acc is correct (structural variant)');
+is($svf->feature_so_term, 'structural_variant', 'StructuralVariationFeature feature SO term is correct (structural variant)');
 
 
 # test getter/setters

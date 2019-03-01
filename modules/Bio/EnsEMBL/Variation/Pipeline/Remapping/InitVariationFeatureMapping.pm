@@ -1,6 +1,6 @@
 =head1 LICENSE
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -68,7 +68,6 @@ sub generate_mapping_input {
   $self->param('qc_ref_seq', $fh_ref_seq);
 
   my $variants_with_multi_map = {};
-  my $mode = $self->param('mode');
   my $dump_multi_map = 1;
   my $file_count = 0;
   opendir(DIR, $dump_features_dir) or die $!;

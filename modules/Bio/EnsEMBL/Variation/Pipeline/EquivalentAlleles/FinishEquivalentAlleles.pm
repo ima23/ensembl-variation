@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,13 +53,14 @@ sub run {
   my $self = shift;
 
   my $dir = $self->required_param('pipeline_dir');
-  open my $report, ">", "$dir/EA_report.txt" || die "Failed to open EA_report.txt : $!\n";
+  open(my $report, ">", "$dir/EA_report.txt") or die("Failed to open EA_report.txt : $!\n");
 
 
   my $var_dba   = $self->get_species_adaptor('variation');
 
   my $count_attrib_ext_sth  = $var_dba->dbc->prepare(qq[ select attrib_id, count(*)
                                                          from variation_attrib
+                                                         group by attrib_id
                                                         ]);
 
   $count_attrib_ext_sth->execute();

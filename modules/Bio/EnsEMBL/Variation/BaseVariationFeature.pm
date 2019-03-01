@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -362,13 +362,35 @@ sub feature_so_acc {
   my ($self) = @_;
 
   my $ref = ref $self;
-  my $so_acc = $SO_ACC_MAPPER->{$ref};
+  my $so_acc = $SO_ACC_MAPPER->{$ref}->{'acc'};
 
   unless ($so_acc ) {
     throw( "SO acc for ${ref} is not defined. Please update %SO_ACC_MAPPER in Bio::EnsEMBL::Variation::Utils::Config");
   }
 
   return $so_acc;
+}
+
+=head2 feature_so_term
+
+  Example     : $feat = $feat->feature_so_term;
+  Description : This method returns a string containing the SO accession term of the feature class.
+                Overrides Bio::EnsEMBL::Feature::feature_so_term
+  Returns     : string (Sequence Ontology accession term)
+  Exceptions  : Thrown if caller feature SO term is undefined in $SO_ACC_MAPPER constant
+=cut
+
+sub feature_so_term {
+  my ($self) = @_;
+
+  my $ref = ref $self;
+  my $so_term = $SO_ACC_MAPPER->{$ref}->{'term'};
+
+  unless ($so_term ) {
+    throw( "SO term for ${ref} is not defined. Please update %SO_ACC_MAPPER in Bio::EnsEMBL::Variation::Utils::Config");
+  }
+
+  return $so_term;
 }
 
 1;

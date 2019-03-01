@@ -1,4 +1,4 @@
-534	\N	schema_version	94
+534	\N	schema_version	97
 80	\N	patch	patch_50_51_b.sql|multispecies
 83	\N	patch	patch_50_51_c.sql|associated_feature_type
 82	\N	patch	patch_50_51_a.sql|cell_type_description
@@ -285,3 +285,26 @@
 724	\N	patch	patch_93_94_i.sql|Modify motif_feature table
 725	\N	patch	patch_93_94_j.sql|Create motif_feature_peak table
 726	\N	patch	patch_93_94_k.sql|Create motif_feature_regulatory_feature table
+727	\N	patch	patch_94_95_a.sql|schema_version
+728	\N	patch	patch_94_95_b.sql|update to segmentation state tables
+729	\N	patch	patch_94_95_c.sql|Update to alignment table
+730	\N	patch	patch_94_95_d.sql|Update to execution_plan table
+731	\N	patch	patch_94_95_e.sql|Update to regulatory_build_statistic table
+732	\N	patch	patch_94_95_f.sql|Update to experimental_group table
+733	\N	patch	patch_94_95_g.sql|segmentation table
+734	\N	patch	patch_94_95_h.sql|segmentation_cell_tables
+735	\N	patch	patch_94_95_i.sql|segmentation_statistic table
+736	\N	patch	patch_94_95_j.sql|segmentation_file table
+737	\N	patch	patch_94_95_k.sql|peak calling statistic table
+738	\N	patch	patch_94_95_l.sql|Modify length for column name from epigenome table
+739	\N	patch	patch_94_95_m.sql|drop obsolete tables
+740	\N	patch	patch_94_95_n.sql|add unique constrain on display_label column for epigenome table
+741	\N	patch	patch_95_96_a.sql|schema_version
+742	\N	patch	patch_95_96_b.sql|changed data type for regulatory build statistics
+743	\N	patch	patch_95_96_c.sql|make unique probe_id column from probe table
+744	\N	patch	patch_95_96_d.sql|add ReadFile to the enum of the ensembl_object_type
+745	\N	patch	patch_95_96_e.sql|Add description and release_version columns to regulatory_build table
+746	\N	patch	patch_96_97_a.sql|schema_version
+747	\N	patch	patch_96_97_b.sql|Changed to text
+748	\N	patch	patch_96_97_c.sql|Added flag
+749	\N	patch	patch_96_97_d.sql|Fix foreign key data type inconsistencies

@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,9 +83,11 @@ sub clean_up_gvf_file {
   $self->run_cmd("mv $human_gvf_file $human_gvf_file_before_clean_up"); 
   die "Couldn't find $human_gvf_file_before_clean_up" unless (-f $human_gvf_file_before_clean_up);
 
+  $human_gvf_file = "$pipeline_dir/gvf/homo_sapiens/homo_sapiens-chr$chrom.gvf";
+
   my $fh_before = gzopen($human_gvf_file_before_clean_up, "rb") or die "Error reading $human_gvf_file_before_clean_up: $gzerrno\n";
   my $fh_after = FileHandle->new($human_gvf_file, 'w');
-  while ($fh_in->gzreadline($_) > 0) {
+  while ($fh_before->gzreadline($_) > 0) {
     chomp;
     if (/^#/) {
       print $fh_after $_, "\n";
