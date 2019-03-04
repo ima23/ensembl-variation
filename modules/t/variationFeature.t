@@ -397,4 +397,19 @@ is_deeply(
 
 $vfa->db->use_vcf(0);
 
+#test convert_to: ensembl,vcf,id,hgvs,pileup
+  my $tmp_vf_fs = Bio::EnsEMBL::Variation::VariationFeature->new_fast({
+    start          => 10001,
+    end            => 10002,
+    allele_string  => 'A/-',
+    strand         => 1,
+    map_weight     => 1,
+    adaptor        => $vfa,
+    slice          => $slice,
+    seq_region_start => $slice->seq_region_start,
+    seq_region_end   => $slice->seq_region_end
+  });
+
+  print join ",", @{$tmp_vf_fs->consequence_type};
+
 done_testing();
