@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2018] EMBL-European Bioinformatics Institute
+Copyright [2016-2019] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1245,8 +1245,14 @@ our @ATTRIB_SETS = (
 
 # Used for the feature_so_acc functionality implemented by Bio::EnsEMBL::Feature
 our %SO_ACC_MAPPER = (
-  'Bio::EnsEMBL::Variation::VariationFeature'           => "SO:0001060",
-  'Bio::EnsEMBL::Variation::StructuralVariationFeature' => "SO:0001537"
+  'Bio::EnsEMBL::Variation::VariationFeature' => {
+      acc  => 'SO:0001060',
+      term => 'sequence_variant',
+    },
+  'Bio::EnsEMBL::Variation::StructuralVariationFeature' => {
+      acc  => 'SO:0001537',
+      term => 'structural_variant',
+    }
 );
 
 

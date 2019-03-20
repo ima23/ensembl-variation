@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2018] EMBL-European Bioinformatics Institute
+# Copyright [2016-2019] EMBL-European Bioinformatics Institute
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -121,6 +121,7 @@ ok($vf->add_OverlapConsequence($oc), 'add_OverlapConsequence');
 ok($vf->get_all_evidence_values()->[0] eq 'Cited', 'get_all_evidence_values');
 ok($vf->get_all_clinical_significance_states()->[0] eq $clin_sign->[0], 'get_all_clinical_significance_states');
 is($vf->feature_so_acc, 'SO:0001060', 'VariationFeature feature SO acc is correct (sequence variant)');
+is($vf->feature_so_term, 'sequence_variant', 'VariationFeature feature SO term is correct (sequence variant)');
 
 # test getter/setters
 
@@ -340,11 +341,11 @@ ok($spdi_notation_9->{'CA'} eq 'NC_000011.9:66321302:TG:CA', 'SPDI genomic valid
 my $var10 = $va->fetch_by_name('rs1480172069');
 my $vf10_spdi = $var10->get_all_VariationFeatures()->[0];
 my $spdi_notation_10 = $vf10_spdi->spdi_genomic();
-ok($spdi_notation_10->{'-'} eq 'NC_000019.9:48332372:ATTT:', 'SPDI genomic valid deletion - reverse strand'); 
+ok($spdi_notation_10->{'-'} eq 'NC_000019.9:48835629:ATTT:', 'SPDI genomic valid deletion - reverse strand'); 
 my $var11 = $va->fetch_by_name('rs1321600644');
 my $vf11_spdi = $var11->get_all_VariationFeatures()->[0];
 my $spdi_notation_11 = $vf11_spdi->spdi_genomic();
-ok($spdi_notation_11->{'-'} eq 'NC_000012.11:101603876:25:', 'SPDI genomic valid deletion >20 bp'); 
+ok($spdi_notation_11->{'-'} eq 'NC_000012.11:101997654:25:', 'SPDI genomic valid deletion >20 bp'); 
 
 #test deprecated methods
 print "\n## Test deprecated methods ##\n";

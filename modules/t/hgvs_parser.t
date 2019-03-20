@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2018] EMBL-European Bioinformatics Institute
+# Copyright [2016-2019] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -641,6 +641,12 @@ is(
   'replace_ref'
 );
 
+is(
+  $vdba->get_variationFeatureAdaptor->fetch_by_hgvs_notation(-hgvs => 'Q00872:p.Pro18Leu')->allele_string,
+  'C/T',
+  'uniprot_ref'
+);
+
 
 sub get_results{
 
@@ -769,5 +775,19 @@ ok( $hgvs_genomic_no_slice->{'T'} eq $hgvs_genomic->{'T'}, "hgvs genomic notatio
   is( $hgvs_genomic->{'TGT'}, $hgvs_expected, 'trimming of alleles for delins to ins');
 
 }
+
+# Test hgvs input with (gene) and with (p.) 
+my $vf_adaptor = $vdba->get_variationFeatureAdaptor; 
+my $vf_1 = $vf_adaptor->fetch_by_hgvs_notation( "ENST00000522587.1(ATP6V1E2):c.-101-6514C>T" );
+my $hgvs_genomic_1 = $vf_1->hgvs_genomic();
+ok( $hgvs_genomic_1->{'T'} eq 'NC_000002.11:g.46746465G>A', "hgvs genomic notation with (gene)"); 
+
+my $vf_2 = $vf_adaptor->fetch_by_hgvs_notation( "ENST00000293261.2:c.1376_1378delCCT(p.Ser459del)" );
+my $hgvs_genomic_2 = $vf_2->hgvs_genomic(); 
+ok( $hgvs_genomic_2->{'-'} eq 'NC_000019.9:g.48836478_48836480del', "hgvs genomic notation with (p.)"); 
+
+my $vf_3 = $vf_adaptor->fetch_by_hgvs_notation( "ENST00000293261.2(TMEM143):c.1376_1378delCCT(p.Ser459del)" );
+my $hgvs_genomic_3 = $vf_3->hgvs_genomic();  
+ok( $hgvs_genomic_3->{'-'} eq 'NC_000019.9:g.48836478_48836480del', "hgvs genomic notation with (gene) and (p.)"); 
 
 done_testing(); 
