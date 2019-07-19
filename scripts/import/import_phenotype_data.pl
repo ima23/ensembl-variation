@@ -253,6 +253,7 @@ my %special_characters = (
   '<' => 'less than',
   '>' => 'more than',
   '&' => 'and',
+  '%' => 'percent'
 );
 
 
