@@ -72,13 +72,12 @@ sub get_available_adaptors{
     my %pairs = (
       'Allele'                                 => 'Bio::EnsEMBL::Variation::DBSQL::AlleleAdaptor',
       'AlleleFeature'                          => 'Bio::EnsEMBL::Variation::DBSQL::AlleleFeatureAdaptor',
+      'AlleleSynonym'                          => 'Bio::EnsEMBL::Variation::DBSQL::AlleleSynonymAdaptor',
       'Attribute'                              => 'Bio::EnsEMBL::Variation::DBSQL::AttributeAdaptor',
       'CADDAnnotation'                         => 'Bio::EnsEMBL::Variation::DBSQL::CADDAnnotationAdaptor',
       'GenotypeCode'                           => 'Bio::EnsEMBL::Variation::DBSQL::GenotypeCodeAdaptor',
       'GERPAnnotation'                         => 'Bio::EnsEMBL::Variation::DBSQL::GERPAnnotationAdaptor',
       'Individual'                             => 'Bio::EnsEMBL::Variation::DBSQL::IndividualAdaptor',
-      'IndividualGenotype'                     => 'Bio::EnsEMBL::Variation::DBSQL::IndividualGenotypeAdaptor',
-      'IndividualGenotypeFeature'              => 'Bio::EnsEMBL::Variation::DBSQL::IndividualGenotypeFeatureAdaptor',
       'LDFeatureContainer'                     => 'Bio::EnsEMBL::Variation::DBSQL::LDFeatureContainerAdaptor',
       'MetaCoordContainer'                     => 'Bio::EnsEMBL::DBSQL::MetaCoordContainer',
       'MetaContainer'                          => 'Bio::EnsEMBL::Variation::DBSQL::MetaContainer',
@@ -389,6 +388,14 @@ sub vcf_root_dir {
   $self->{vcf_root_dir} = shift if @_;
   
   return $self->{vcf_root_dir};
+}
+
+sub gerp_root_dir {
+  my $self = shift;
+  
+  $self->{gerp_root_dir} = shift if @_;
+  
+  return $self->{gerp_root_dir};
 }
 
 sub vcf_tmp_dir {

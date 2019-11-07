@@ -98,7 +98,7 @@ CREATE TABLE `alignment_read_file` (
 
 CREATE TABLE `analysis` (
   `analysis_id` smallint(5) unsigned NOT NULL AUTO_INCREMENT,
-  `created` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `created` datetime DEFAULT NULL,
   `logic_name` varchar(100) NOT NULL,
   `db` varchar(120) DEFAULT NULL,
   `db_version` varchar(40) DEFAULT NULL,
@@ -270,13 +270,15 @@ CREATE TABLE `data_file` (
 CREATE TABLE `epigenome` (
   `epigenome_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(120) NOT NULL,
-  `display_label` varchar(120) NOT NULL,
-  `description` varchar(80) DEFAULT NULL,
+  `short_name` varchar(120) NOT NULL,
+  `description` mediumtext,
   `production_name` varchar(120) DEFAULT NULL,
   `gender` enum('male','female','hermaphrodite','mixed','unknown') DEFAULT 'unknown',
+  `search_terms` mediumtext,
+  `full_name` mediumtext,
   PRIMARY KEY (`epigenome_id`),
   UNIQUE KEY `name_idx` (`name`),
-  UNIQUE KEY `display_label_idx` (`display_label`)
+  UNIQUE KEY `short_name_idx` (`short_name`)
 ) ENGINE=MyISAM AUTO_INCREMENT=99 DEFAULT CHARSET=latin1;
 
 CREATE TABLE `execution_plan` (
@@ -407,7 +409,7 @@ CREATE TABLE `feature_type` (
   `analysis_id` smallint(5) unsigned DEFAULT NULL,
   `description` varchar(255) DEFAULT NULL,
   `so_accession` varchar(64) DEFAULT NULL,
-  `so_name` varchar(255) DEFAULT NULL,
+  `so_term` varchar(255) DEFAULT NULL,
   `production_name` varchar(120) DEFAULT NULL,
   PRIMARY KEY (`feature_type_id`),
   UNIQUE KEY `name_class_analysis_idx` (`name`,`class`,`analysis_id`),
@@ -454,7 +456,7 @@ CREATE TABLE `meta` (
   PRIMARY KEY (`meta_id`),
   UNIQUE KEY `species_key_value_idx` (`species_id`,`meta_key`,`meta_value`(50)),
   KEY `species_value_idx` (`species_id`,`meta_value`(50))
-) ENGINE=MyISAM AUTO_INCREMENT=750 DEFAULT CHARSET=latin1;
+) ENGINE=MyISAM AUTO_INCREMENT=760 DEFAULT CHARSET=latin1;
 
 CREATE TABLE `meta_coord` (
   `table_name` varchar(40) NOT NULL,
@@ -472,22 +474,21 @@ CREATE TABLE `meta_coord_bu` (
 
 CREATE TABLE `mirna_target_feature` (
   `mirna_target_feature_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `feature_set_id` int(10) unsigned NOT NULL,
   `feature_type_id` int(10) unsigned DEFAULT NULL,
   `accession` varchar(60) DEFAULT NULL,
   `display_label` varchar(60) DEFAULT NULL,
   `evidence` varchar(60) DEFAULT NULL,
-  `interdb_stable_id` int(10) unsigned DEFAULT NULL,
   `method` varchar(60) DEFAULT NULL,
   `seq_region_id` int(10) unsigned NOT NULL,
   `seq_region_start` int(10) unsigned NOT NULL,
   `seq_region_end` int(10) unsigned NOT NULL,
   `seq_region_strand` tinyint(1) NOT NULL,
   `supporting_information` varchar(100) DEFAULT NULL,
+  `analysis_id` smallint(10) unsigned DEFAULT NULL,
+  `gene_stable_id` varchar(128) DEFAULT NULL,
   PRIMARY KEY (`mirna_target_feature_id`),
-  UNIQUE KEY `interdb_stable_id_idx` (`interdb_stable_id`),
+  UNIQUE KEY `unique_idx` (`accession`,`gene_stable_id`,`seq_region_start`,`seq_region_end`,`evidence`,`method`),
   KEY `feature_type_idx` (`feature_type_id`),
-  KEY `feature_set_idx` (`feature_set_id`),
   KEY `seq_region_idx` (`seq_region_id`,`seq_region_start`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 MAX_ROWS=100000000;
 
@@ -749,7 +750,7 @@ CREATE TABLE `read_file_experimental_configuration` (
 CREATE TABLE `regulatory_activity` (
   `regulatory_activity_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `regulatory_feature_id` int(10) unsigned DEFAULT NULL,
-  `activity` enum('INACTIVE','REPRESSED','POISED','ACTIVE','NA') DEFAULT NULL,
+  `activity` enum('INACTIVE','REPRESSED','POISED','ACTIVE','NA') NOT NULL,
   `epigenome_id` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`regulatory_activity_id`),
   UNIQUE KEY `uniqueness_constraint_idx` (`epigenome_id`,`regulatory_feature_id`),

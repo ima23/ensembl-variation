@@ -68,6 +68,58 @@
       }
     },
     {
+      "id": "ExAC_0.3_with_duplicated_row",
+      "species": "homo_sapiens",
+      "assembly": "GRCh37",
+      "type": "local",
+      "filename_template": "###t-root###/test-genome-DBs/homo_sapiens/variation/exac_with_duplicated_row.vcf.gz",
+      "chromosomes": [ "11" ],
+      "source_name": "ExAC",
+      "source_version": "0.3",
+      "source_url": "http://exac.broadinstitute.org/",
+      "is_remapped": "0",
+      "population_prefix": "ExAC:",
+      "populations": {
+        "9900000": {
+          "name": "ExAC:ALL",
+          "_raw_name": "",
+          "description": "All ExAC individuals"
+        },
+        "9900001": {
+          "name": "AFR",
+          "description": "African/African American"
+        },
+        "9900002": {
+          "name": "AMR",
+          "description": "Latino"
+        },
+        "9900003": {
+          "name": "Adj",
+          "description": "Adjusted (individuals with GQ >= 20 and depth DP >= 10)"
+        },
+        "9900004": {
+          "name": "EAS",
+          "description": "East Asian"
+        },
+        "9900005": {
+          "name": "FIN",
+          "description": "Finnish"
+        },
+        "9900006": {
+          "name": "NFE",
+          "description": "Non-Finnish European"
+        },
+        "9900007": {
+          "name": "OTH",
+          "description": "Other"
+        },
+        "9900008": {
+          "name": "SAS",
+          "description": "South Asian"
+        }
+      }
+    },
+    {
       "id": "dbsnp",
       "species": "homo_sapiens",
       "assembly": "GRCh37",
@@ -86,6 +138,48 @@
         }
       }
     },
+    { "id": "esp_GRCh37",
+      "species": "homo_sapiens",
+      "assembly": "GRCh37",
+      "type": "local",
+      "filename_template": "###t-root###/testdata/test_data_ESP_GRCh37.vcf.gz",
+      "chromosomes": [
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+        "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y"
+      ],
+      "population_prefix": "ESP6500:",
+      "populations": {
+        "9910000": {
+          "name": "AA",
+          "_ac": "AA_AC"
+        },
+        "9910001": {
+          "name": "EA",
+          "_ac": "EA_AC"
+        }
+      }
+    },
+    { "id": "esp_GRCh37_with_error",
+      "species": "homo_sapiens",
+      "assembly": "GRCh37",
+      "type": "local",
+      "filename_template": "###t-root###/testdata/test_data_ESP_GRCh37_with_error.vcf.gz",
+      "chromosomes": [
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+        "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y"
+      ],
+      "population_prefix": "ESP6500:",
+      "populations": {
+        "9910000": {
+          "name": "AA",
+          "_ac": "AA_AC"
+        },
+        "9910001": {
+          "name": "EA",
+          "_ac": "EA_AC"
+        }
+      }
+    },
     {
       "annotation_type": "gerp",
       "id": "70_mammals.gerp_conservation_score",
@@ -100,7 +194,7 @@
       "species": "homo_sapiens",
       "assembly": "GRCh37",
       "type": "local",
-      "filename_template": "###t-root###/testdata/cadd.tsv.gz"
+      "filename_template": "###t-root###/testdata/test_data_cadd.tsv.gz"
     }
   ]
 }

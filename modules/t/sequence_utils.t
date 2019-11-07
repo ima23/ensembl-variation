@@ -18,10 +18,11 @@ use warnings;
 
 use Test::More;
 use Test::Exception;
+use Test::Warnings qw(warning :no_end_test);
 use Bio::EnsEMBL::Test::MultiTestDB;
 
 BEGIN {
-    use_ok('Bio::EnsEMBL::Variation::Utils::Sequence', qw(sequence_with_ambiguity align_seqs trim_sequences get_matched_variant_alleles));
+    use_ok('Bio::EnsEMBL::Variation::Utils::Sequence', qw(sequence_with_ambiguity align_seqs trim_sequences get_matched_variant_alleles get_hgvs_alleles trim_right));
 }
 
 
@@ -108,11 +109,54 @@ is_deeply(
   'trim_sequences - empty_to_dash'
 );
 
+is_deeply(
+  trim_sequences(qw(A 0)),
+  ['A', 0, 0, 0, 0],
+  'trim_sequences Accept 0 as alt allele'
+);
+
 throws_ok {trim_sequences(undef, 'A')} qr/Missing reference or alternate sequence/, 'trim_sequences - no ref';
 throws_ok {trim_sequences('A')} qr/Missing reference or alternate sequence/, 'trim_sequences - no alt';
 throws_ok {trim_sequences()} qr/Missing reference or alternate sequence/, 'trim_sequences - no both';
 
 
+## test multi-allelic SPDI trimming
+####################################
+
+my @no_change = ('GCGAGCCTGTGTGGTGCG', 'G');
+is_deeply(
+ trim_right(\@no_change),
+  ['GCGAGCCTGTGTGGTGCG', 'G'],
+  'trim_right - no change'
+);
+
+my @one_base = ('AAAAA',  'AAAA', 'AA');
+is_deeply(
+  trim_right(\@one_base),
+  ['AAAA',  'AAA', 'A'],
+  'trim_right - reduce by one base'
+);
+
+my @multi_base = ('ACGTGGACG', 'ACG', 'ACGTGGACGTGGACG');
+is_deeply(
+  trim_right(\@multi_base),
+  ['ACGTGGA',  'A', 'ACGTGGACGTGGA'],
+  'trim_right - multiple bases removed'
+);
+
+my @single_allele = ('AAAA');
+is_deeply(
+  trim_right(\@single_allele),
+  ['AAAA'],
+  'trim_right - single allele'
+);
+
+my @no_common = ('ACGTG', 'AT', 'ACGTGGA');
+is_deeply(
+  trim_right(\@no_common),
+  ['ACGTG',  'AT', 'ACGTGGA'],
+  'trim_right - no common bases to be removed'
+);
 
 ## get_matched_variant_alleles
 ##############################
@@ -124,14 +168,26 @@ throws_ok {get_matched_variant_alleles({})} qr/undef/, 'get_matched_variant_alle
 throws_ok {get_matched_variant_alleles([])} qr/expected.+HASH/, 'get_matched_variant_alleles - wrong ref type a';
 throws_ok {get_matched_variant_alleles({}, [])} qr/expected.+HASH/, 'get_matched_variant_alleles - wrong ref type b';
 
-throws_ok {get_matched_variant_alleles({}, {})} qr/Missing ref key.+first/, 'get_matched_variant_alleles - missing ref field a';
-throws_ok {get_matched_variant_alleles({ref => 'A'}, {})} qr/Missing ref key.+second/, 'get_matched_variant_alleles - missing ref field b';
+like(
+  (warning { get_matched_variant_alleles({}, {}) })->[0], qr/Missing ref key.+first/, 'get_matched_variant_alleles - missing ref field a'
+);
+like(
+  (warning { get_matched_variant_alleles({ref => 'A'}, {}) })->[0], qr/Missing ref key.+second/, 'get_matched_variant_alleles - missing ref field b'
+);
 
-throws_ok {get_matched_variant_alleles({ref => 'A'}, {ref => 'A'})} qr/Missing alt.+first/, 'get_matched_variant_alleles - missing alts field a';
-throws_ok {get_matched_variant_alleles({ref => 'A', alts => ['B']}, {ref => 'A'})} qr/Missing alt.+second/, 'get_matched_variant_alleles - missing alts field b';
+like(
+  (warning { get_matched_variant_alleles({ref => 'A'}, {ref => 'A'}) })->[0], qr/Missing alt.+first/, 'get_matched_variant_alleles - missing alts field a'
+);
+like(
+  (warning { get_matched_variant_alleles({ref => 'A', alts => ['B']}, {ref => 'A'}) })->[0], qr/Missing alt.+second/, 'get_matched_variant_alleles - missing alts field b'
+);
 
-throws_ok {get_matched_variant_alleles({ref => 'A', alts => ['B']}, {ref => 'A', alts => ['B']})} qr/Missing pos key.+first/, 'get_matched_variant_alleles - missing pos field a';
-throws_ok {get_matched_variant_alleles({ref => 'A', alts => ['B'], pos => 1}, {ref => 'A', alts => ['B']})} qr/Missing pos key.+second/, 'get_matched_variant_alleles - missing pos field b';
+like(
+  warning { get_matched_variant_alleles({ref => 'A', alts => ['B']}, {ref => 'A', alts => ['B'], pos => 2}) }, qr/Missing pos key.+first/, 'get_matched_variant_alleles - missing pos field a'
+);
+like(
+  warning { get_matched_variant_alleles({ref => 'A', alts => ['B'], pos => 1}, {ref => 'A', alts => ['B']}) }, qr/Missing pos key.+second/, 'get_matched_variant_alleles - missing pos field b'
+);
 
 # define tests
 # {
@@ -632,6 +688,33 @@ foreach my $test(@tests) {
     'get_matched_variant_alleles - '.($test->{d} || 'misc')
   );
 }
+
+
+## parse hgvs alleles
+my $test1="17:g.43082402A>C";
+my ($ref_allele, $alt_allele) = get_hgvs_alleles($test1);
+ok($ref_allele eq 'A', "get_hgvs_alleles - ref allele - $test1" );
+ok($alt_allele eq 'C', "get_hgvs_alleles - alt allele - $test1" );
+
+$test1="ENST00000003084:c.1431_1433delTTC";
+($ref_allele, $alt_allele) = get_hgvs_alleles($test1);
+ok($ref_allele eq 'TTC', "get_hgvs_alleles - ref allele - $test1" );
+ok($alt_allele eq '-', "get_hgvs_alleles - alt allele - $test1" );
+
+$test1="19:g.110747_110748insT";
+($ref_allele, $alt_allele) = get_hgvs_alleles($test1);
+ok($ref_allele eq '-', "get_hgvs_alleles - ref allele - $test1" );
+ok($alt_allele eq 'T', "get_hgvs_alleles - alt allele - $test1" );
+
+$test1="ENST00000522587.1:c.-310+750[13]A";
+($ref_allele, $alt_allele) = get_hgvs_alleles($test1);
+ok($ref_allele eq 'A', "get_hgvs_alleles - ref allele - $test1" );
+ok($alt_allele eq 'AAAAAAAAAAAAA', "get_hgvs_alleles - alt allele - $test1" );
+
+$test1="5:g.87363407A[3]";
+($ref_allele, $alt_allele) = get_hgvs_alleles($test1);
+ok($ref_allele eq 'A', "get_hgvs_alleles - ref allele - $test1" );
+ok($alt_allele eq 'AAA', "get_hgvs_alleles - alt allele - $test1" );
 
 
 ## sequence with ambiguity

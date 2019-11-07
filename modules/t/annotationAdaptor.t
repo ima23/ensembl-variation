@@ -40,8 +40,11 @@ my $gerp_annotation = $gerp_annotation_adaptor->fetch_by_id('70_mammals.gerp_con
 my $cadd_annotation = $cadd_annotation_adaptor->fetch_by_id('CADD');
 
 # now we need to set the filename_template
+$vdb->gerp_root_dir($dir);
+ok($vdb->gerp_root_dir eq $dir, "set and get gerp_root_dir");
 my $temp = $gerp_annotation->filename_template();
 $temp =~ s/###t\-root###/$dir/;
+
 $gerp_annotation->filename_template($temp);
 ok($gerp_annotation->filename_template =~ /^$dir/, "update GERPAnnotation filename_template");
 
@@ -90,6 +93,14 @@ $vf = $variation->get_all_VariationFeatures()->[0];
 warns_like {
   $vf_cadd_scores = $vf->get_all_cadd_scores($cadd_annotation->filename_template);
 } qr/Can only calculate CADD scores for variants of length 1/, 'Warn if input variant is an insertion';
+
+# location not in CADD file:
+$variation = $va->fetch_by_name('rs199476127');
+$vf = $variation->get_all_VariationFeatures()->[0];
+$vf_cadd_scores = $vf->get_all_cadd_scores($cadd_annotation->filename_template);
+($cadd_annotation_id, $scores) = %{$vf_cadd_scores};
+ok($cadd_annotation_id eq 'CADD', "CADD annotation file name");
+ok(scalar keys %$scores == 0, "Return empty if location is not in CADD file");
 
 # GERP for insertions rs70937952
 $variation = $va->fetch_by_name('rs70937952');

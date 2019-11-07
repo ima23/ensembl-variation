@@ -144,6 +144,7 @@ ok($gts && scalar @$gts == 1119, "get_all_SampleGenotypeFeatures_by_Slice count 
 ok($gts->[0]->genotype_string eq 'C|C', "get_all_SampleGenotypeFeatures_by_Slice first genotype C|C");
 
 
+
 ok($coll->assembly() eq "GRCh37", "assembly");
 ok($coll->source_name() eq "1000genomes", "source name");
 ok($coll->source_url() eq "http://www.1000genomes.org", "source URL");
@@ -167,7 +168,54 @@ $coll->use_seq_region_synonyms(1);
 $gts = $coll->get_all_SampleGenotypeFeatures_by_VariationFeature($vf);
 ok($gts && scalar @$gts == 3, "get_all_SampleGenotypeFeatures_by_VariationFeature with synonyms 3");
 
+ok($coll->vcf_collection_close, 'close VCF collection filehandle');
 
+## test ESP data query
+$v = $va->fetch_by_name('rs80359165');
+($vf) = @{$v->get_all_VariationFeatures};
+ok($vf && $vf->isa('Bio::EnsEMBL::Variation::VariationFeature'), "get variation feature for rs80359165");
+
+ok($coll->vcf_collection_close, 'close VCF collection filehandle');
+
+$coll = $vca->fetch_by_id('esp_GRCh37');
+ok($coll && $coll->isa('Bio::EnsEMBL::Variation::VCFCollection'), "fetch_by_id esp_GRCh37");
+$temp = $coll->filename_template();
+$temp =~ s/###t\-root###/$dir/;
+$coll->filename_template($temp);
+$coll->filename_template =~ /^$dir/;
+my @alleles = @{$coll->get_all_Alleles_by_VariationFeature($vf)};
+is_deeply(
+  [
+    map {'p:'.$_->population->name.' a:'.$_->allele.' f:'.sprintf("%.4g", $_->frequency).' c:'.$_->count}
+    sort {$a->population->name cmp $b->population->name || $a->allele cmp $b->allele}
+    @alleles
+  ],
+  [
+    'p:ESP6500:AA a:A f:1 c:4406',
+    'p:ESP6500:AA a:C f:0 c:0',
+    'p:ESP6500:EA a:A f:0.9999 c:8597',
+    'p:ESP6500:EA a:C f:0.0001163 c:1'
+  ],
+  'get_all_Alleles_by_VariationFeature - freqs and counts ESP rs80359165'
+);
+
+my @population_genotypes = @{$coll->get_all_PopulationGenotypes_by_VariationFeature($vf)};
+
+is_deeply(
+  [
+    map {'p:'.$_->population->name.' genotype:'.$_->genotype_string.' f:'.sprintf("%.4f", $_->frequency).' c:'.$_->count}
+    sort {$a->population->name cmp $b->population->name || $a->genotype_string cmp $b->genotype_string}
+    @population_genotypes
+  ],
+  [
+    'p:ESP6500:AA genotype:A|A f:1.0000 c:2203',
+    'p:ESP6500:EA genotype:A|A f:0.9998 c:4298',
+    'p:ESP6500:EA genotype:A|C f:0.0002 c:1'
+  ],
+  'get_all_PopulationGenotypes_by_VariationFeature - freqs and counts ESP rs80359165'
+);
+
+ok($coll->vcf_collection_close, 'close VCF collection filehandle after ESP annotation');
 
 ## test exac info stuff
 
@@ -190,10 +238,9 @@ is_deeply(
 );
 
 ($vf) = @{$va->fetch_by_name('rs192076014')->get_all_VariationFeatures};
-my @alleles = @{$coll->get_all_Alleles_by_VariationFeature($vf)};
+@alleles = @{$coll->get_all_Alleles_by_VariationFeature($vf)};
 
 is(scalar @alleles, 18, 'get_all_Alleles_by_VariationFeature - count');
-
 is_deeply(
   [
     map {'p:'.$_->population->name.' a:'.$_->allele.' f:'.sprintf("%.4f", $_->frequency).' c:'.$_->count}
@@ -222,6 +269,59 @@ is_deeply(
   ],
   'get_all_Alleles_by_VariationFeature - freqs and counts'
 );
+
+# test with a VCF file which contains a duplicated rows for rs192076014
+$coll = $vca->fetch_by_id('ExAC_0.3_with_duplicated_row');
+ok($coll && $coll->isa('Bio::EnsEMBL::Variation::VCFCollection'), "fetch_by_id");
+
+# now we need to set the filename_template
+$temp = $coll->filename_template();
+$temp =~ s/###t\-root###/$dir/;
+$coll->filename_template($temp);
+$coll->filename_template =~ /^$dir/;
+
+@alleles = @{$coll->get_all_Alleles_by_VariationFeature($vf)};
+
+is(scalar @alleles, 18, 'get_all_Alleles_by_VariationFeature - count from VCF with duplicated row');
+is_deeply(
+  [
+    map {'p:'.$_->population->name.' a:'.$_->allele.' f:'.sprintf("%.4f", $_->frequency).' c:'.$_->count}
+    sort {$a->population->name cmp $b->population->name || $a->allele cmp $b->allele}
+    @alleles
+  ],
+  [
+    'p:ExAC:AFR a:A f:0.0034 c:22',
+    'p:ExAC:AFR a:G f:0.9966 c:6436',
+    'p:ExAC:ALL a:A f:0.0002 c:24',
+    'p:ExAC:ALL a:G f:0.9998 c:121312',
+    'p:ExAC:AMR a:A f:0.0002 c:1',
+    'p:ExAC:AMR a:G f:0.9998 c:5837',
+    'p:ExAC:Adj a:A f:0.0003 c:24',
+    'p:ExAC:Adj a:G f:0.9997 c:76724',
+    'p:ExAC:EAS a:A f:0.0000 c:0',
+    'p:ExAC:EAS a:G f:1.0000 c:5244',
+    'p:ExAC:FIN a:A f:0.0000 c:0',
+    'p:ExAC:FIN a:G f:1.0000 c:4094',
+    'p:ExAC:NFE a:A f:0.0000 c:0',
+    'p:ExAC:NFE a:G f:1.0000 c:42906',
+    'p:ExAC:OTH a:A f:0.0016 c:1',
+    'p:ExAC:OTH a:G f:0.9984 c:619',
+    'p:ExAC:SAS a:A f:0.0000 c:0',
+    'p:ExAC:SAS a:G f:1.0000 c:11588'
+  ],
+  'get_all_Alleles_by_VariationFeature - freqs and counts from VCF with duplicated row'
+);
+
+
+# back to VCF file without duplicated rows 
+$coll = $vca->fetch_by_id('ExAC_0.3');
+ok($coll && $coll->isa('Bio::EnsEMBL::Variation::VCFCollection'), "fetch_by_id");
+
+# now we need to set the filename_template
+$temp = $coll->filename_template();
+$temp =~ s/###t\-root###/$dir/;
+$coll->filename_template($temp);
+$coll->filename_template =~ /^$dir/;
 
 # test one which has an allele not found in dbSNP entry
 ($vf) = @{$va->fetch_by_name('rs145769591')->get_all_VariationFeatures};

@@ -36,7 +36,7 @@ GetOptions(
   'input_file|i=s',          # input file name
   'output_file|o=s',         # default current directory date-time-calculation_type.out | inputfile_name.out
   'warnings_file|w=s',       # write warnings to file
-  'species',                 # default human 
+  'species=s',               # default human
   'population|p=s{1,}' => \@populations, # list all populations for LD computation: --populations population1 population2
   'show_populations',            # show all available populations
   'region=s{1,}' => \@regions,   # chromosome:start-end
@@ -240,6 +240,7 @@ sub region {
   my @populations = @{$config->{_populations}};
   foreach my $region (@regions) {
     my ($chromosome, $start, $end) = split /\s+/, $region;
+    die "Invalid format for region. Expected chromosome:start-end." unless ($chromosome && $start && $end);
     my $slice = $slice_adaptor->fetch_by_region('chromosome', $chromosome, $start, $end);
     if ($slice) {
       foreach my $population (@populations) {
@@ -294,7 +295,10 @@ sub parse_input {
     $fh->close;
   } else {
     if ($config->{calculation} eq 'region') {
-      @input = map {s/:|-/ /g} @regions;
+      foreach my $region (@regions) {
+        $region =~ s/:|-/ /g;
+        push @input, $region;
+      }
     } else {
       @input = @variants;
     }

@@ -34,12 +34,11 @@ SET default_storage_engine=MYISAM;
       The most common type is the single nucleotide variation (SNP) though the schema also accommodates copy number variations (CNVs) and structural variations (SVs).<br />
 			In Ensembl, a variation is defined by its flanking sequence rather than its mapped location on a chromosome; a variation may in fact have multiple mappings across a genome, 
 			although this fails our <a href="/info/genome/variation/prediction/variant_quality.html#quality_control">Quality Control</a>.<br /> 
-      This table stores a variation's name (commonly an ID of the form e.g. rs123456, assigned by dbSNP), along with an ancestral (or reference) allele.
+      This table stores a variation's name (commonly an ID of the form e.g. rs123456, assigned by dbSNP).
 
 @column variation_id		       Primary key, internal identifier.
 @column source_id			         Foreign key references to the @link source table.
 @column name				           Name of the variation. e.g. "rs1333049".
-@column ancestral_allele	     Ancestral allele for the variant.
 @column flipped				         This is set to 1 if the variant is flipped from the negative to the positive strand during import.
 @column class_attrib_id		     Class of the variation, key into the @link attrib table.<br /> The list of variation classes is available <a href="/info/genome/variation/prediction/classification.html#classes">here</a>.
 @column somatic                Flags whether this variation is known to be somatic or not
@@ -64,7 +63,6 @@ CREATE TABLE variation (
   variation_id INT(10) UNSIGNED NOT NULL AUTO_INCREMENT, # PK
   source_id INT(10) UNSIGNED NOT NULL, 
   name VARCHAR(255),
-  ancestral_allele VARCHAR(255) DEFAULT NULL,
   flipped TINYINT(1) UNSIGNED NULL DEFAULT NULL,
   class_attrib_id INT(10) UNSIGNED default 0,
   somatic TINYINT(1) DEFAULT 0 NOT NULL,
@@ -117,6 +115,7 @@ CREATE TABLE variation_attrib (
 @column seq_region_strand		   The orientation of the variation on the @link seq_region.
 @column variation_id				   Foreign key references to the @link variation table.
 @column allele_string			     This is a denormalised string taken from the alleles in the allele table associated with this variation. The reference allele (i.e. one on the reference genome comes first).
+@column ancestral_allele	     Ancestral allele for the variation feature location.
 @column variation_name			   A denormalisation taken from the variation table. This is the name or identifier that is used for displaying the feature.
 @column map_weight				     The number of times that this variation has mapped to the genome. This is a denormalisation as this particular feature is one example of a mapped location. This can be used to limit the the features that come back from a query.
 @column flags						       Flag to filter the selection of variations.
@@ -148,6 +147,7 @@ CREATE TABLE variation_feature (
   seq_region_strand TINYINT NOT NULL,
   variation_id INT(10) UNSIGNED NOT NULL,
   allele_string VARCHAR(50000),
+  ancestral_allele VARCHAR(50) DEFAULT NULL,
   variation_name VARCHAR(255),
   map_weight INT NOT NULL,
   flags SET('genotyped'),
@@ -1638,7 +1638,8 @@ CREATE TABLE source (
   somatic_status ENUM('germline','somatic','mixed') DEFAULT 'germline',
   data_types SET('variation','variation_synonym','structural_variation','phenotype_feature','study') DEFAULT NULL,
 	
-	PRIMARY KEY ( source_id )
+	PRIMARY KEY ( source_id ),
+  UNIQUE KEY name_idx (name) 
 );
 
 
@@ -1734,12 +1735,12 @@ CREATE TABLE submitter (
 
 CREATE TABLE publication (
   publication_id INT(10) UNSIGNED NOT NULL AUTO_INCREMENT, 
-  title          VARCHAR(255),
+  title          VARCHAR(300),
   authors        VARCHAR(255) CHARACTER SET utf8mb4,
   pmid           INT(10),
   pmcid          VARCHAR(255),
   year           INT(10) UNSIGNED,
-  doi            VARCHAR(50),
+  doi            VARCHAR(80),
   ucsc_id        VARCHAR(50),
   PRIMARY KEY ( publication_id ),
   KEY pmid_idx (pmid),
@@ -1753,6 +1754,7 @@ CREATE TABLE publication (
 
 @column publication_id       Primary key, internal identifier.
 @column variation_id         Primary key, foreign key references @link variation
+@column data_source_attrib   Foreign key references to the @link attrib table.
 
 @see publication
 @see variation
@@ -1761,7 +1763,9 @@ CREATE TABLE publication (
 CREATE TABLE variation_citation (
    variation_id INT(10) UNSIGNED NOT NULL,
    publication_id INT(10) UNSIGNED NOT NULL,
-   PRIMARY KEY variation_citation_idx (variation_id, publication_id)
+   data_source_attrib SET('615','616','617') DEFAULT NULL, 
+   PRIMARY KEY variation_citation_idx (variation_id, publication_id),
+   KEY data_source_attrib_idx (data_source_attrib)
 );
 
 
@@ -1822,15 +1826,11 @@ CREATE TABLE meta (
 
 
 # Add schema type and schema version to the meta table.
-INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'schema_type', 'variation'), (NULL, 'schema_version', '96');
+INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'schema_type', 'variation'), (NULL, 'schema_version', '100');
 
 
 # Patch IDs for new release
-INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_95_96_a.sql|schema version');
-INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_95_96_b.sql|modify index on variation_synonym');            
-INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_95_96_c.sql|add new entries to the failed_description table');
-INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_95_96_d.sql|create table to store failed variation features');
-INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_95_96_e.sql|Rename motif_name to binding_matrix_stable_id.');
+INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_99_100_a.sql|schema version');
 
 /**
 @header  Failed tables

@@ -27,8 +27,6 @@ use warnings;
 
 use Test::More;
 
-use Data::Dumper;
-
 use FindBin qw($Bin);
 
 
@@ -282,6 +280,13 @@ my %test_output = (
             "ENSP00000349297.4:p.Pro23_Gly24insArgThrTer",
             "insertion, stop gained part way through inserted seq"
             ],
+      38 => ["NC_000011.9:g.32417913_32417914delinsTT",
+            "TT",
+            "ENST00000530998.1:c.451_452delinsAA",
+            "AA",
+            "ENSP00000435307.1:p.Arg151Lys",
+            "2 base sustitution, stop gained [-1]",
+            ],
 
 );
 
@@ -473,7 +478,10 @@ my %test_input = (
             "ENST00000356839.4:c.68_69insCAGGACGTGAGGCGTGTT",
             "ENSP00000349297.4:p.Pro23_Gly24insArgThrTerGly",
             ],
-
+      38 => ["NC_000011.9:g.32417913_32417914delinsTT",
+             "ENST00000530998.1:c.451_452delinsAA",
+             "ENSP00000435307.1:p.Arg151Lys",
+             ],
 );
 
 my %test_input_shifted = (
@@ -564,13 +572,13 @@ my %test_output_no_shift = (
            "",
            "insertion, coding intron downstream"
           ],
-     7 => ["NC_000019.9:g.48836478_48836480del",  ## rs149734771
+     7 => ["NC_000019.9:g.48836479_48836481del",  ## rs149734771
            "-",
-           "ENST00000293261.2:c.1376_1378del",
+           "ENST00000293261.2:c.1375_1377del",
            "-",
            "ENSP00000293261.2:p.Ser459del",
            "deletion, inframe codon loss",
-           "CCT"
+           "TCC"
           ],
     );
 
@@ -600,11 +608,11 @@ my %test_input_no_shift = (
      6 => ["NC_000012.11:g.102061070_102061071insT",
            "ENST00000360610.2:c.2336-440_2336-439insT", 
           ],
-     7 => ["NC_000019.9:g.48836478_48836480del",
-           "NC_000019.9:g.48836478_48836480delAGG",
-           "ENST00000293261.2:c.1376_1378delCCT",
+     7 => ["NC_000019.9:g.48836479_48836481del",
+           "NC_000019.9:g.48836479_48836481delAGG",
+           "ENST00000293261.2:c.1375_1377delTCC",
            "ENSP00000293261.2:p.Ser459del",
-           "ENST00000293261.2:c.1376_1378del"
+           "ENST00000293261.2:c.1375_1377del"
           ]
 );
 
@@ -789,5 +797,18 @@ ok( $hgvs_genomic_2->{'-'} eq 'NC_000019.9:g.48836478_48836480del', "hgvs genomi
 my $vf_3 = $vf_adaptor->fetch_by_hgvs_notation( "ENST00000293261.2(TMEM143):c.1376_1378delCCT(p.Ser459del)" );
 my $hgvs_genomic_3 = $vf_3->hgvs_genomic();  
 ok( $hgvs_genomic_3->{'-'} eq 'NC_000019.9:g.48836478_48836480del', "hgvs genomic notation with (gene) and (p.)"); 
+
+# Test hgvs inversions 
+ my $vf_4 = $vf_adaptor->fetch_by_hgvs_notation( "ENST00000522587.6:c.-101-7012_-101-7011inv" );
+ my $hgvs_inv_4 = $vf_4->hgvs_genomic();  
+ ok( $hgvs_inv_4->{'CA'} eq 'NC_000002.11:g.46746962_46746963inv', "hgvs inversion");  
+
+ my $vf_5 = $vf_adaptor->fetch_by_hgvs_notation( "ENST00000306448.4:c.-981_-980inv" );
+ my $hgvs_inv_5 = $vf_5->hgvs_genomic();  
+ ok( $hgvs_inv_5->{'CA'} eq 'NC_000002.11:g.46746962_46746963inv', "hgvs inversion");
+# Test RefSeq transcript 
+#my $vf_4 = $vf_adaptor->fetch_by_hgvs_notation( "NM_000484.3:c.56N>T" );
+#my $hgvs_genomic_4 = $vf_4->hgvs_genomic();
+#ok( $hgvs_genomic_4->{'T'} eq 'NC_000021.8:g.26170678N>A', "RefSeq transcript");
 
 done_testing(); 
