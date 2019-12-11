@@ -81,7 +81,7 @@ by setting the include_failed_variations flag in Bio::EnsEMBL::Variation::DBSQL:
 =cut
 
 use strict;
-use warnings;
+use warnings; 
 
 package Bio::EnsEMBL::Variation::DBSQL::VariationFeatureAdaptor;
 
@@ -91,7 +91,7 @@ use Bio::EnsEMBL::Variation::DBSQL::BaseAdaptor;
 use Bio::EnsEMBL::DBSQL::BaseFeatureAdaptor;
 use Bio::EnsEMBL::Utils::Scalar qw(assert_ref);
 use Bio::EnsEMBL::Utils::Sequence qw(reverse_comp);
-use Bio::EnsEMBL::Utils::Exception qw(throw deprecate warning);
+use Bio::EnsEMBL::Utils::Exception qw(throw warning);
 use Bio::EnsEMBL::Utils::Iterator;
 use Bio::EnsEMBL::Utils::Argument qw(rearrange);
 use Bio::EnsEMBL::Variation::Utils::Constants qw(%OVERLAP_CONSEQUENCES);
@@ -147,6 +147,7 @@ sub store {
             seq_region_strand,
             variation_id,
             allele_string,
+            ancestral_allele,
             variation_name,
             map_weight,
             flags,
@@ -160,7 +161,7 @@ sub store {
             minor_allele_count,
             alignment_quality,
             evidence_attribs
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     });
     
     $sth->execute(
@@ -170,6 +171,7 @@ sub store {
         $vf->strand,
         $vf->variation ? $vf->variation->dbID : $vf->{_variation_id},
         $vf->allele_string,
+        $vf->ancestral_allele,
         $vf->variation_name,
         $vf->map_weight || 1,
         $vf->{flags},
@@ -237,6 +239,7 @@ sub update {
             seq_region_strand = ?,
             variation_id = ?,
             allele_string = ?,
+            ancestral_allele = ?,
             variation_name = ?,
             map_weight = ?,
             flags = ?,
@@ -260,6 +263,7 @@ sub update {
         $vf->strand,
         $vf->variation ? $vf->variation->dbID : $vf->{_variation_id},
         $vf->allele_string,
+        $vf->ancestral_allele,
         $vf->variation_name,
         $vf->map_weight || 1,
         $vf->{flags},
@@ -1247,7 +1251,7 @@ sub _default_where_clause {
 sub _columns {
   return qw( vf.variation_feature_id vf.seq_region_id vf.seq_region_start
              vf.seq_region_end vf.seq_region_strand vf.variation_id
-             vf.allele_string vf.variation_name vf.map_weight vf.source_id vf.somatic 
+             vf.allele_string vf.ancestral_allele vf.variation_name vf.map_weight vf.source_id vf.somatic 
              vf.consequence_types vf.class_attrib_id
              vf.minor_allele vf.minor_allele_freq vf.minor_allele_count vf.alignment_quality 
              vf.evidence_attribs vf.clinical_significance vf.display s.name);
@@ -1275,14 +1279,14 @@ sub _objs_from_sth {
 
     my ($variation_feature_id, $seq_region_id, $seq_region_start,
       $seq_region_end, $seq_region_strand, $variation_id,
-      $allele_string, $variation_name, $map_weight, $source_id,
+      $allele_string, $ancestral_allele, $variation_name, $map_weight, $source_id,
       $is_somatic, $consequence_types, $class_attrib_id,
       $minor_allele, $minor_allele_freq, $minor_allele_count, $last_vf_id,
       $alignment_quality,$evidence_attribs,$clin_sig,$display, $source_name );
 
     $sth->bind_columns(\$variation_feature_id, \$seq_region_id,
                      \$seq_region_start, \$seq_region_end, \$seq_region_strand,
-                     \$variation_id, \$allele_string, \$variation_name,
+                     \$variation_id, \$allele_string, \$ancestral_allele, \$variation_name,
                      \$map_weight, \$source_id, \$is_somatic,
                      \$consequence_types, \$class_attrib_id,
                      \$minor_allele, \$minor_allele_freq, \$minor_allele_count,
@@ -1421,6 +1425,7 @@ sub _objs_from_sth {
                 'strand'   => $seq_region_strand,
                 'slice'    => $slice,
                 'allele_string' => $allele_string,
+                'ancestral_allele' => $ancestral_allele,
                 'variation_name' => $variation_name,
                 'adaptor'  => $self,
                 'dbID'     => $variation_feature_id,
@@ -1784,7 +1789,11 @@ sub fetch_by_hgvs_notation {
     my $transcript = $transcript_adaptor->fetch_by_stable_id($reference);
 
     my @transcripts;
-    
+   
+    if(!defined($transcript) && ($reference =~ /NM_/ || $reference =~ /XM_/)){
+      @transcripts = @{$transcript_adaptor->fetch_all_by_external_name($reference)};
+    }
+ 
     #try and fetch via gene
     if(!defined($transcript)) {
       push @transcripts, @{$self->_get_gene_transcripts($transcript_adaptor, $reference, $multiple_ok)};
@@ -1845,16 +1854,27 @@ sub fetch_by_hgvs_notation {
          
   elsif($type =~ m/p/i) {
   
+    # throw a message for frameshifts  
+    if($description =~ /[A-Za-z]+[0-9]+[A-Za-z]+fs/){
+          throw("Frameshifts are not supported for HGVS protein input");
+    } 
+
     #Get the Transcript object to convert coordinates
     my $transcript_adaptor = $user_transcript_adaptor || $self->db()->dnadb()->get_TranscriptAdaptor();
     my $transcript = $transcript_adaptor->fetch_by_translation_stable_id($reference);
 
     my @transcripts;
 
+    # Fetch xref transcript 
+    # Also fetch transcript erroneously submitted with p. changes - 'NM'
+    if(!defined($transcript) && ($reference =~ /NP/ || $reference =~ /XP/ || $reference =~ /NM/)){
+      @transcripts = @{$transcript_adaptor->fetch_all_by_external_name($reference)};
+    }
+
     # support some malformed HGVS
     if(!defined($transcript)) {
       # Seeing transcripts erroneously submitted with p. changes
-      if($reference =~ /ENST|NM/){
+      if($reference =~ /ENST/){
          push @transcripts, $transcript_adaptor->fetch_by_stable_id($reference);
       }
       # Fetch as UniProt ID or gene
@@ -1881,7 +1901,12 @@ sub fetch_by_hgvs_notation {
 
       my $possible_prot;
       eval {
+        if($description =~ /del$/){ 
+          $possible_prot = _parse_hgvs_protein_position_del($description, $reference, $transcript);
+        } 
+        else{
         $possible_prot = _parse_hgvs_protein_position($description, $reference, $transcript);
+        } 
         throw("Could not uniquely determine nucleotide change from $hgvs") if scalar @$possible_prot > 1 && !$multiple_ok;
         $slice = $slice_adaptor->fetch_by_region($transcript->coord_system_name(), $transcript->seq_region_name());
       };
@@ -2012,6 +2037,11 @@ sub _hgvs_from_components {
   elsif ($description =~ m/ins/i && $description !~ m/del/i) {
      # insertion: the start & end positions are inverted by convention
       if($end > $start){ ($start, $end  ) = ( $end , $start); }   
+  }
+  elsif ($description =~ m/inv/i) {
+    $ref_allele = $refseq_allele; 
+    $alt_allele = $refseq_allele;
+    reverse_comp(\$alt_allele); 
   }
  
   else {    
@@ -2160,35 +2190,10 @@ sub _parse_hgvs_protein_position{
   $from = $Bio::SeqUtils::ONECODE{$from} || $from;
   $to   = $Bio::SeqUtils::ONECODE{$to} || $to;
 
-  # get genomic position 
-  my $tr_mapper = $transcript->get_TranscriptMapper(); 
-
-  my @coords = $tr_mapper->pep2genomic($pos, $pos); 
-
-  throw ("Unable to map the peptide coordinate $pos to genomic coordinates for protein $reference") if (scalar(@coords) != 1 || !$coords[0]->isa('Bio::EnsEMBL::Mapper::Coordinate')); 
-
-  my $strand = $coords[0]->strand(); 
-  my $start  = $strand > 0 ? $coords[0]->start() : $coords[0]->end(); 
-  my $end    = $strand > 0 ? $coords[0]->start() : $coords[0]->end(); 
-
-  ## find reference sequence 
-  my $slice = $transcript->slice();
-
-  ## make a small slice for sequence look-up
-  my $from_slice = Bio::EnsEMBL::Slice->new(-coord_system => $slice->coord_system(),
-                                            -start => $coords[0]->start(),
-                                            -end => $coords[0]->start()+2,
-                                            -strand => $slice->strand(),
-                                            -seq_region_name => $slice->seq_region_name,
-                                            -seq_region_length => 3,
-                                            -adaptor => $slice->adaptor);
-
-  my $from_codon_ref = $from_slice->seq();
-
+  # get genomic position - returns seq on transcript strand
+  my ($from_codon_ref, $start, $end, $strand) = get_reference($transcript, $pos, undef, 0);  
+  
   throw ("Unable to find the genomic reference sequence for protein $reference") unless defined $from_codon_ref; 
-
-  ## correct for strand
-  reverse_comp(\$from_codon_ref) if $strand <0;
 
   # get correct codon table 
   my $attrib = $transcript->slice->get_all_Attributes('codon_table')->[0];
@@ -2198,12 +2203,15 @@ sub _parse_hgvs_protein_position{
 
   # check genomic codon is compatible with input HGVS
   my $check_prot   = $codon_table->translate($from_codon_ref);
+
   my @from_codons;
+  ## if the genomic sequence translates to match the input HGVS ref protein, use this
   if ($check_prot eq $from){
     push @from_codons, $from_codon_ref ;
   }
   else{
     # rev-translate input ref sequence if the genome sequence does not match
+    print "Sequence translated from reference ($from_codon_ref -> $check_prot) does not match input sequence ($from)\n" if $DEBUG ==1;
     @from_codons   = $codon_table->revtranslate($from);
   }
 
@@ -2243,18 +2251,18 @@ sub _parse_hgvs_protein_position{
   foreach my $best_path(keys %best_paths) {
 
     my ($ref_allele, $alt_allele) = ('', '');
-    my ($this_start, $this_end) = ($start, $end);
+    my ($this_start, $this_end) = $strand > 0 ? ($start, $start) : ($end, $end);
     my @path = split(/\,/, $best_path);
 
-    # coords
-	  if($strand > 0) {
-  		$this_start += (split /\_/, $path[0])[0]; 
-  		$this_end   += (split /\_/, $path[-1])[0];
-	  }
-	  else {
-    	$this_start -= (split /\_/, $path[0])[0];
-    	$this_end   -= (split /\_/, $path[-1])[0];
-	  }
+    # adjust coords to only changed bases
+    if($strand > 0) {
+      $this_start += (split /\_/, $path[0])[0];
+      $this_end   += (split /\_/, $path[-1])[0];
+    }
+    else {
+      $this_end   -= (split /\_/, $path[0])[0];
+      $this_start -= (split /\_/, $path[-1])[0];
+    }
 
     # alleles 
     $ref_allele .= (split /\_|\//, $path[$_])[1] for 0..$#path;
@@ -2274,6 +2282,74 @@ sub _parse_hgvs_protein_position{
   #exit(0); 
 }
 
+## Extract enough information to make a variation_feature from HGVS protein nomenclature
+## Only attempts deletions 
+sub _parse_hgvs_protein_position_del{
+
+  my ($description, $reference, $transcript ) = @_;
+
+  my ($from, $pos, $from2, $pos2, $to); 
+
+  # if the is a deletion of several amino acids eg. Lys1110_Gln1111del  
+  if($description =~ /_/){
+    my ($first_residue,$second_residue) = split('_', $description); 
+
+    # get the first altered amino acid and position 
+    ($from, $pos) = $first_residue =~ /^(\w+?)(\d+)$/;
+    
+    # get the last altered amino acid and position  
+    ($from2, $pos2, $to) = $second_residue =~ /^(\w+?)(\d+)(\w+?|\*)$/;
+  }
+  
+  # only one amino acid is deleted eg. Lys1110del
+  else{  
+    ($from, $pos, $to) = $description =~ /^(\w+?)(\d+)(\w+?|\*)$/; 
+  } 
+
+  # get genomic position & sequence on transcript strand
+  my ($from_codon_ref, $start, $end, $strand) = get_reference($transcript, $pos, $pos2, 1); 
+  
+  throw ("Unable to find the genomic reference sequence for protein $reference") unless defined $from_codon_ref; 
+
+  my @results; 
+  push @results, [$from_codon_ref, '-', $start, $end, $strand];
+
+  return \@results; 
+} 
+
+## Extract strand, reference allele, start and end position   
+sub get_reference{
+  my ($transcript, $pos, $pos2, $type_del) = @_; 
+  
+  my $tr_mapper = $transcript->get_TranscriptMapper(); 
+
+  my @coords = defined($pos2) ? $tr_mapper->pep2genomic($pos, $pos2) : $tr_mapper->pep2genomic($pos, $pos);  
+
+  my $start  = $coords[0]->start();
+  my $end    = $coords[0]->end();
+  my $strand = $coords[0]->strand();
+
+  my $seq_length = $type_del == 1 ? ($end-$start) + 1 : 3;  
+
+  ## find reference sequence 
+  my $slice = $transcript->slice();
+
+  ## make a small slice for sequence look-up
+  my $from_slice = Bio::EnsEMBL::Slice->new(-coord_system => $slice->coord_system(),
+                                              -start => $start,
+                                              -end => $end,
+                                              -strand => $slice->strand(),
+                                              -seq_region_name => $slice->seq_region_name,
+                                              -seq_region_length => $seq_length, 
+                                              -adaptor => $slice->adaptor); 
+
+  my $from_codon_ref = $from_slice->seq(); 
+  
+  ## correct for strand
+  reverse_comp(\$from_codon_ref) if $strand <0; 
+  
+  return ($from_codon_ref, $start, $end, $strand); 
+}
 
 =head2 fetch_by_dbID
 
@@ -2391,6 +2467,7 @@ sub fetch_by_spdi_notation{
   if($count_separator > 3){ throw ("Could not parse the SPDI notation $spdi. Too many elements present"); } 
   elsif($count_separator < 3){ throw ("Could not parse the SPDI notation $spdi. Too few elements present"); } 
 
+  my $raw_sequence_id = $sequence_id;
   # strip version number from reference 
   if($sequence_id =~ m/\./i){
     $sequence_id =~ s/\.\d+//g;
@@ -2441,14 +2518,14 @@ sub fetch_by_spdi_notation{
     if($check_deleted_seq_letters){
       $ref_allele = uc $deleted_seq;
       $end = $position + length($deleted_seq); 
-      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end);
+      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id);
 
       throw ("Reference allele extracted from $sequence_id:$start-$end ($refseq_allele) does not match reference allele given by SPDI notation $spdi ($ref_allele)") 
         unless ($ref_allele eq $refseq_allele);
     } 
     else{
       $end = $position + $deleted_seq;
-      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end);
+      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id);
     }   
     $alt_allele = '-';
   } 
@@ -2461,7 +2538,7 @@ sub fetch_by_spdi_notation{
       $ref_allele = uc $deleted_seq; 
       $end = ($check_deleted_seq_digit) ? $position : $position + length($deleted_seq); 
 
-      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end); 
+      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id); 
       
       throw ("Reference allele extracted from $sequence_id:$start-$end ($refseq_allele) does not match reference allele given by SPDI notation $spdi ($ref_allele)")
         unless ($ref_allele eq $refseq_allele); 
@@ -2474,7 +2551,7 @@ sub fetch_by_spdi_notation{
         unless ($inserted_seq_length == $deleted_seq);
  
       $end = $position + $deleted_seq; 
-      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end); # get the correct reference allele  
+      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id); # get the correct reference allele  
     } 
 
     $alt_allele = uc $inserted_seq; 
@@ -2499,13 +2576,13 @@ sub fetch_by_spdi_notation{
 
 # Get the reference allele for the genomic position 
 sub get_reference_allele{ 
-  my ($slice_adaptor, $sequence_id, $start, $end) = @_; 
+  my ($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id) = @_;
 
   # get a slice for the variant genomic coordinate 
   my $slice = $slice_adaptor->fetch_by_region('chromosome',$sequence_id,$start,$end);
 
   if(!ref($slice) || !$slice->isa('Bio::EnsEMBL::Slice')) {
-    throw('Bio::EnsEMBL::Slice expected. Sequence name not valid'); 
+    throw("Sequence name $raw_sequence_id not valid"); 
   } 
 
   my $re_allele = $slice->seq(); 

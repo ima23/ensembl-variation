@@ -65,6 +65,7 @@ my $strand = 1;
 my $vname = $v->name();
 my $map_weight = 1;
 my $allele_str = 'A/T';
+my $ancestral_allele = 'A';
 my $is_somatic = 0;
 my $minor_allele = 'A';
 my $minor_allele_frequency = 0.1;
@@ -83,6 +84,7 @@ my $vf = Bio::EnsEMBL::Variation::VariationFeature->new
    -variation_name => $vname,
    -map_weight => $map_weight,
    -allele_string => $allele_str,
+   -ancestral_allele => $ancestral_allele,
    -variation => $v,
    -source => $source,
    -is_somatic => $is_somatic,
@@ -101,6 +103,7 @@ ok($vf->variation_name() eq $vname,     "get variation_name");
 ok($vf->name() eq $vname,               "get name");
 ok($vf->map_weight() == $map_weight,    "get map_weight");
 ok($vf->allele_string() eq $allele_str, "get allele");
+ok($vf->ancestral_allele() eq $ancestral_allele, "get ancestral_allele");
 ok($vf->ref_allele_string() eq 'A',     "get ref allele");
 is_deeply($vf->alt_alleles, ['T'],      "get alt alleles");
 ok($vf->display_id() eq $vname,         "display_name");
@@ -131,6 +134,7 @@ my $v2 = Bio::EnsEMBL::Variation::Variation->new(-name => 'rs12311',
 ok(test_getter_setter($vf, 'variation', $v2),            'set new variation object');
 ok(test_getter_setter($vf, 'map_weight', 4),             'set new map_weight');
 ok(test_getter_setter($vf, 'allele_string', 'T/G'),    'set new allele_string');
+ok(test_getter_setter($vf, 'ancestral_allele', 'T'),    'set new ancestral_allele');
 ok(test_getter_setter($vf, 'variation_name', 'rs21431'), 'set new variation name');
 ok(test_getter_setter($vf, 'flank_match', '1'),          'set new flank_match');
 
@@ -233,6 +237,23 @@ is_deeply(
   [],
   'to_VCF_record - unknown alleles sequence_alteration'
 );
+
+my $fully_justified_allele_str = 'ACGTGGACG/ACG/ACGTGGACGTGGACG';
+$vf->allele_string($fully_justified_allele_str);
+is_deeply(
+  $vf->to_VCF_record(),
+  [$chr, $sr_start, $vname, 'ACGTGGA', 'A,ACGTGGACGTGGA', '.', '.', '.'],
+  'to_VCF_record - fully justified allele string clipped'
+);
+
+
+is_deeply(
+  $vf->to_VCF_record(1),
+  [$chr, $sr_start, $vname, 'ACGTGGACG', 'ACG,ACGTGGACGTGGACG', '.', '.', '.'],
+  'to_VCF_record - fully justified allele string  not clipped'
+);
+
+
 $vf->allele_string($allele_str);
 
 
@@ -346,6 +367,10 @@ my $var11 = $va->fetch_by_name('rs1321600644');
 my $vf11_spdi = $var11->get_all_VariationFeatures()->[0];
 my $spdi_notation_11 = $vf11_spdi->spdi_genomic();
 ok($spdi_notation_11->{'-'} eq 'NC_000012.11:101997654:25:', 'SPDI genomic valid deletion >20 bp'); 
+my $var12 = $va->fetch_by_name('rs8192742');
+my $vf12_spdi = $var12->get_all_VariationFeatures()->[0];
+my $spdi_notation_12 = $vf12_spdi->spdi_genomic();
+ok($spdi_notation_12->{'TTTTTTTTTT'} eq 'NC_000013.10:76134860:TTTTTTTTT:TTTTTTTTTT', 'SPDI tandem repeat');
 
 #test deprecated methods
 print "\n## Test deprecated methods ##\n";
@@ -396,5 +421,40 @@ is_deeply(
 );
 
 $vfa->db->use_vcf(0);
+
+
+# test fake variation feature adapter and fake variation feature
+{
+  my $vfa = Bio::EnsEMBL::Variation::DBSQL::VariationFeatureAdaptor->new_fake('homo_sapiens');
+  my $tmp_vf_fs = Bio::EnsEMBL::Variation::VariationFeature->new_fast({
+    start          => 100000,
+    end            => 100005,
+    allele_string  => 'A/-',
+    strand         => 1,
+    map_weight     => 1,
+    adaptor        => $vfa,
+    slice          => $slice,
+    seq_region_start => $slice->seq_region_start,
+    seq_region_end   => $slice->seq_region_end
+  });
+  my $conseq = join ",", @{$tmp_vf_fs->consequence_type};
+  ok($conseq eq 'intergenic_variant', "fake VariationFeatureAdaptor and VariationFeature");
+}
+
+# test most_severe_OverlapConsequence for consequences with the same rank
+my $oc_1 = Bio::EnsEMBL::Variation::OverlapConsequence->new(
+             -SO_term => 'splice_donor_variant',
+             -rank    => 3);
+
+my $oc_2 = Bio::EnsEMBL::Variation::OverlapConsequence->new(
+              -SO_term => 'splice_acceptor_variant',
+              -rank    => 3);
+
+my $vf_msc = Bio::EnsEMBL::Variation::VariationFeature->new
+  ( -overlap_consequences => [$oc_1, $oc_2]);
+
+my $msc_2_expected = 'splice_acceptor_variant';
+my $msc_2 = $vf_msc->most_severe_OverlapConsequence();
+is($msc_2->SO_term, $msc_2_expected, 'vf - most_severe_OverlapConsequence - same rank');
 
 done_testing();

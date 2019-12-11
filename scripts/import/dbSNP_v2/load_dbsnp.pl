@@ -25,6 +25,7 @@ use Pod::Usage qw(pod2usage);
 use Bio::EnsEMBL::Variation::Utils::QCUtils qw(count_rows get_evidence_attribs check_illegal_characters check_for_ambiguous_alleles remove_ambiguous_alleles);
 use Bio::EnsEMBL::Registry;
 use Bio::DB::HTS::Faidx;
+use Bio::EnsEMBL::Variation::Utils::AncestralAllelesUtils;
 use Bio::EnsEMBL::Variation::Utils::Sequence qw(SO_variation_class);
 use Bio::EnsEMBL::Variation::Utils::Constants qw(:SO_class_terms);
 use Bio::EnsEMBL::Utils::Sequence qw(reverse_comp);
@@ -32,6 +33,7 @@ use Bio::EnsEMBL::Utils::Sequence qw(reverse_comp);
 use File::Basename;
 use POSIX qw(strftime);
 use JSON;
+use FileHandle;
 
 my $config = configure();
 
@@ -66,6 +68,19 @@ if ($config->{'ref_check'}) {
 } else {
   print "ref checking not done\n";
 }
+
+my $ancestral_fai_index;
+my $ancestral_alleles_utils;
+if ($config->{'assign_ancestral_allele'}) {
+  print "ancestral allele assignment done\n";
+  $ancestral_fai_index = Bio::DB::HTS::Faidx->new($config->{'ancestral_fasta_file'});
+  $ancestral_alleles_utils = Bio::EnsEMBL::Variation::Utils::AncestralAllelesUtils->new(-fasta_db => $ancestral_fai_index);
+  print "ancestral_fai_index done\n";
+  die("Unable to get ancestral FASTA index") if (!$ancestral_fai_index);
+} else {
+  print "ancestral allele assignment not done\n";
+}
+
 my $seq_regions_names = get_seq_region_names($dbh_var);
 my $nc_regions = get_nc_regions($dbh_var);
 my $nw_regions = get_nw_regions($dbh_var);
@@ -75,6 +90,13 @@ my $lu_info = get_lu_info($dbh_var);
 
 # Parsing the data file
 my ($num_lines) = parse_dbSNP_file($config);
+
+# Close open filehandles
+for my $ma_type ('update', 'log') {
+  my $fh = $config->{join('-', 'ma', $ma_type, 'fh')};
+  $fh->close();
+}
+
 report_summary($config, $num_lines);
 
 # Set up the reporting files
@@ -105,6 +127,21 @@ sub init_reports {
   print "error_file ($config->{'error_file'})\n";
   if (-e $config->{'error_file'}) {
     die("$config->{'error_file'} already exists. Please rename or delete\n");
+  }
+
+  # Files for updates and logs of 1000Genomes minor allele flipping
+  for my $ma_type ('update', 'log') {
+    my $filename = join('-', $base_filename, 'ma', $ma_type) . '.txt';
+    if (-e "$rpt_dir/$filename") {
+        die("$rpt_dir/$filename already exists. Please rename or delete\n");
+    }
+    my $fh = FileHandle->new("$rpt_dir/$filename", 'w');
+    if (! $fh) {
+      die("Unable to open $rpt_dir/$filename");
+    } else {
+      print "minor allele $ma_type file = $rpt_dir/$filename\n";
+      $config->{join('-', 'ma', $ma_type, 'fh')} = $fh;
+    }
   }
 }
 
@@ -204,7 +241,8 @@ sub parse_refsnp {
 
   # Merges
   $data->{'merges'} = get_merges($rs_json);
-  
+  $data->{'dbsnp2_merges'} = get_dbsnp2_merges($rs_json);
+
   # HGVS
   $data->{'hgvs'} = get_hgvs($config, $rs_json);
 
@@ -216,12 +254,131 @@ sub parse_refsnp {
 
   # 1000Genomes data
   $data->{'1000Genomes'} = get_study_frequency($rs_json, '1000Genomes');
+
+  # If the 1000Genomes data has a minor_allele, check if
+  # a flip is needed. This assumes that the assembly is GRCh38
+  # TODO - add an assembly check
+  #      - add a flag if flipping should be done
+  if (defined $data->{'1000Genomes'} &&
+      $data->{'1000Genomes'}->{'minor_allele'}) {
+    my $align_diff = get_align_diff($rs_json);
+    if ($align_diff) {
+      my $old_minor_allele = $data->{'1000Genomes'}->{'minor_allele'};
+      my $new_minor_allele = flip_minor_allele(
+                        $old_minor_allele,
+                        $data->{'v'}->{'name'},
+                        $align_diff,
+                        $data->{'vfs'},
+                        $config->{'ma-log-fh'});
+      if ($new_minor_allele) {
+        $data->{'1000Genomes'}->{'org_minor_allele'} = $old_minor_allele;
+        $data->{'1000Genomes'}->{'minor_allele'} = $new_minor_allele;
+        my $fh = $config->{'ma-update-fh'};
+        print $fh join("\t", $data->{'v'}->{'name'},
+                         $old_minor_allele,
+                         $new_minor_allele), "\n";
+      }
+    }
+  }
+
+  if ($config->{assign_ancestral_allele}) {
+    assign_ancestral_alleles($data->{'vfs'}, $ancestral_alleles_utils);
+  }
+
   # To the QC now
   # Check for the allele string matches
   # Check the map weight
   # Set the variant class
   return $data; 
 
+}
+
+# Assigns ancestral allele for each variation feature
+# Input:
+# vfs              - variation features for the variant
+sub assign_ancestral_alleles {
+  my ($vfs, $ancestral_alleles_utils) = @_;
+  
+  for my $vf (@$vfs) { 
+    my $seq_name = $seq_regions_names->{$vf->{'seq_region_id'}};
+    my $ancestral_allele = $ancestral_alleles_utils->assign($seq_name, $vf->{'seq_region_start'}, $vf->{'seq_region_end'});
+    $vf->{'ancestral_allele'} = $ancestral_allele;
+  }
+}
+
+# Flips a minor allele if there are differences in GRCh37 and GRCh38 alignment
+# Input:
+# old_minor_allele - allele from GRCh37
+# var_name         - name of the variant
+# align_diff       - alignment diff info between GRCh37 and GRCh38
+# vfs              - variation features for the variant
+# fh               - filehandle to log info and errors
+#
+# Returns:
+# new_minor_allele if flip can be done, otherwise undef
+sub flip_minor_allele {
+  my ($old_minor_allele, $var_name,
+      $align_diff, $vfs, $fh) = @_;
+
+  return if (! $old_minor_allele);
+
+  if ($align_diff->{'review_status'} ne 'ALIGN_DIFF') {
+    print $fh join("\t", $var_name, 'INFO',
+      'review_status: ' . $align_diff->{'review_status'}), "\n";
+    return;
+  }
+
+  my $grch37_loc = $align_diff->{'grch37_loc'};
+  my $grch38_loc = $align_diff->{'grch38_loc'};
+  if (($grch37_loc != $grch38_loc) || ($grch37_loc != 1)) {
+    print $fh join("\t", $var_name, 'SKIP',
+      "Num of GRCh37 loc ($grch37_loc) and num of GRCh38 loc ($grch38_loc) both not equal to 1"), "\n";
+    return;
+  }
+
+  my $new_minor_allele = $old_minor_allele;
+  reverse_comp(\$new_minor_allele);
+
+  # Check the new minor allele in $allele_string
+  if (!@$vfs) {
+    print $fh join("\t", $var_name, 'ERROR',
+               "No variation features"), "\n";
+    return;
+  }
+  my $num_vfs = @$vfs;
+  my $found = 0;
+  for my $vf (@$vfs) {
+    my $vf_found = 0;
+    my $allele_string = $vf->{'allele_string'};
+    my @alleles = split("/", $allele_string);
+    for my $allele (@alleles) {
+        if ($new_minor_allele eq $allele) {
+          $vf_found = 1;
+          last;
+        }
+    }
+    if (! $vf_found) {
+      my $loc = join(':',
+                     $vf->{'seq_region_id'},
+                     $vf->{'seq_region_start'},
+                     $vf->{'seq_region_end'});
+      print $fh join("\t", $var_name, 'ERROR',
+                    "new minor_allele ($new_minor_allele) not found in " .
+                    "allele_string ($allele_string) of variation feature " .
+                    "($loc)") . "\n";
+    }
+    $found += $vf_found;
+  }
+  if (! $found) {
+    print $fh join("\t", $var_name, 'ERROR',
+              "new minor_allele ($new_minor_allele) not found in any allele_string of variation_feature"), "\n";
+    return;
+  } elsif ($found != $num_vfs) {
+    print $fh join("\t", $var_name, 'WARNING',
+                    "new minor_allele ($new_minor_allele) only found in $found/$num_vfs variation_features"), "\n";
+  }
+
+  return $new_minor_allele;
 }
 
 # Get genomic coords
@@ -401,26 +558,41 @@ sub get_allele_info {
 sub get_merges {
   my ($rs_json) = @_;
 
-  debug("\n>>>> get_merges <<<<") if ($debug);
-
-  # On 2017-07-19 the merge field was called 'dbsnp1_merges', was
-  # expecting it to be called merges
-  my $merge_field = 'merges';
-  $merge_field = 'dbsnp1_merges';
-  my $merges = $rs_json->{$merge_field};
-
+  # Get the dbsnp1_merges
+  my $dbsnp1_merges = $rs_json->{'dbsnp1_merges'};
   my @merged_refsnps;
 
   # Format of merges
-  # merge_event {
-  # merged_rsid (string):
-  # revision (string):
-  # merge_date (string):
+  # dbsnp1_merge_event {
+  #   merged_rsid (string):
+  #   revision (string):
+  #   merge_date (string):
   # }
-  for my $merge (@$merges) {
-      push @merged_refsnps,  "rs" . $merge->{'merged_rsid'};
-    }
+  for my $dbsnp1_merge_event (@$dbsnp1_merges) {
+    push @merged_refsnps,  "rs" . $dbsnp1_merge_event->{'merged_rsid'};
+  }
   return \@merged_refsnps;
+}
+
+sub get_dbsnp2_merges {
+  my ($rs_json) = @_;
+  my %dbsnp2_merges;
+  my $present_obs_movements = $rs_json->{'present_obs_movements'};
+  for my $pom (@$present_obs_movements) {
+    my $allele_in_cur_release = $pom->{'allele_in_cur_release'};
+    if ($allele_in_cur_release->{'deleted_sequence'} eq
+      $allele_in_cur_release->{'inserted_sequence'}) {
+      next;
+    }
+    my $prev_rel_rsids = $pom->{'previous_release'}->{'rsids'};
+    for my $prev_rel_rsid (@$prev_rel_rsids) {
+      # Only store if not equal to refsnp_id
+      if ($prev_rel_rsid != $rs_json->{'refsnp_id'}) {
+        $dbsnp2_merges{$prev_rel_rsid}++;
+      }
+    }
+  }
+  return [ map { 'rs'. $_} keys %dbsnp2_merges];
 }
 
 sub get_hgvs {
@@ -521,19 +693,31 @@ sub get_evidence {
 
   my $subsnp_support = $rs_data->{'snp_support'};
 
+  # Determine 1000Genomes evidence: subsnp support or frequency support
+  # submitter_handle has different capitalisation for
+  # subsnp suppport (1000GENOMES)
+  # frequency support (1000Genomes)
   if (defined $subsnp_support) {
     if (defined $subsnp_support->{'1000GENOMES'}) {
       if (defined $lu_info->{'evidence_ids'}->{'1000Genomes'}) {
         push @evidence, $lu_info->{'evidence_ids'}->{'1000Genomes'};
         $freq_evidence++;
       }
+    } elsif (defined $rs_data->{'freq_support'}->{'1000Genomes'}) {
+        push @evidence, $lu_info->{'evidence_ids'}->{'1000Genomes'};
     }
 
+    # Determine ESP evidence: subsnp support or frequency support
+    # submitter_handle is different for
+    # subsnp suppport (NHLBI-ESP)
+    # and frequency support (GoESP)
     if (defined $subsnp_support->{'NHLBI-ESP'}) {
       if (defined $lu_info->{'evidence_ids'}->{'ESP'}) {
         push @evidence, $lu_info->{'evidence_ids'}->{'ESP'};
         $freq_evidence++;
       }
+    } elsif (defined $rs_data->{'freq_support'}->{'GoESP'}) {
+        push @evidence, $lu_info->{'evidence_ids'}->{'ESP'};
     }
 
     if (defined $subsnp_support->{'EVA_EXAC'}) {
@@ -544,8 +728,8 @@ sub get_evidence {
     }
 
     if (defined $subsnp_support->{'TOPMED'}) {
-      if (defined $lu_info->{'evidence_ids'}->{'TOPMED'}) {
-        push @evidence, $lu_info->{'evidence_ids'}->{'TOPMED'};
+      if (defined $lu_info->{'evidence_ids'}->{'TOPMed'}) {
+        push @evidence, $lu_info->{'evidence_ids'}->{'TOPMed'};
         $freq_evidence++;
       }
     }
@@ -555,21 +739,35 @@ sub get_evidence {
         $freq_evidence++;
       }
     }
+
     if (! $added_freq_evidence && ($freq_evidence)) {
       push @evidence, $lu_info->{'evidence_ids'}->{'Frequency'};
     }
   }
+
   return \@evidence;
 }
 
 sub get_map_weight {
   my ($regions, $rs_data) = @_;
   my $map_weight=0;
+  my %seen_vf;
 
-  # Loop the vfs and count the regions that are
+  # Loop through the vfs and count the regions that are top-level
+  # Only count the unique seq_region_id:seq_region_start:seq_region_end
   for my $vf (@{$rs_data->{'vfs'}}) {
     if (defined $regions->{$vf->{'seq_region_id'}}) {
-        $map_weight++;
+      # The import can contain duplicate VFs based on
+      # seq_region_id, seq_region_start, seq_region_end
+      # These can arise when NTs map to same position as NCs
+      # The duplicates are excluded in map_weight calculations
+      my $loc = join(':',
+                     $vf->{'seq_region_id'},
+                     $vf->{'seq_region_start'},
+                     $vf->{'seq_region_end'});
+      next if (defined $seen_vf{$loc});
+      $seen_vf{$loc} = 1;
+      $map_weight++;
     }
   }
   return $map_weight;
@@ -822,6 +1020,10 @@ sub import_refsnp {
                 $rs_data->{'merges'},
                 $config->{'source_id'}->{'Archive dbSNP'});
 
+  import_merges($dbh, $variation_id,
+                $rs_data->{'dbsnp2_merges'},
+                $config->{'source_id'}->{'Former dbSNP'});
+
   import_hgvs($dbh, $variation_id,
               $rs_data->{'hgvs'},
               $config->{'source_id'}->{'dbSNP HGVS'});
@@ -863,7 +1065,7 @@ sub import_variation {
   # Determine the values for maf, minor_allele, minor_allele_count
   my ($maf, $minor_allele, $minor_allele_count);
   if (defined $freq) {
-      $minor_allele = $freq->{'minor_allele'};
+      $minor_allele = $freq->{'minor_allele'} || '-';
       $maf = format_frequency($freq->{'MAF'});
       $minor_allele_count = $freq->{'minor_allele_count'};
   }
@@ -912,7 +1114,7 @@ sub import_variation_feature {
 
   my ($maf, $minor_allele, $minor_allele_count);
   if (defined $freq) {
-      $minor_allele = $freq->{'minor_allele'};
+      $minor_allele = $freq->{'minor_allele'} || '-';
       $maf = format_frequency($freq->{'MAF'});
       $minor_allele_count = $freq->{'minor_allele_count'};
   }
@@ -956,7 +1158,7 @@ sub import_variation_feature {
                            (variation_name, map_weight, 
                             seq_region_id, seq_region_start, seq_region_end,
                             seq_region_strand, 
-                            variation_id, allele_string,
+                            variation_id, allele_string, ancestral_allele,
                             source_id, variation_set_id, class_attrib_id,
                             minor_allele, minor_allele_freq, minor_allele_count,
                             evidence_attribs, display
@@ -965,16 +1167,46 @@ sub import_variation_feature {
                             ?, ?,
                             ?, ?, ?,
                             ?,
-                            ?, ?,
+                            ?, ?, ?,
                             ?, ?, ?,
                             ?, ?, ?,
                             ?, ?)]);
+  my %seen_vf;
+
   for my $vf (@$vfs) {
     next if ($vf->{'par'});
+    # The import can contain duplicate VFs based on
+    # seq_region_id, seq_region_start, seq_region_end
+    # These can arise when NTs map to same position as NCs
+    # The duplicates are not imported into the database
+    my $loc = join(':',
+                    $vf->{'seq_region_id'},
+                    $vf->{'seq_region_start'},
+                    $vf->{'seq_region_end'});
+
+    if (defined $seen_vf{$loc}) {
+      # Keep a record of the location and alleles in the JSON file
+      import_placement_allele($dbh, $variation_id, $vf->{'alleles'});
+
+      # Log only the location not the alleles in the error file
+      my $info = join(";",
+                'seq_region_id=' . $vf->{'seq_region_id'},
+                'seq_region_start=' . $vf->{'seq_region_start'},
+                'seq_region_end=' . $vf->{'seq_region_end'},
+                'seq_id=' . $vf->{'seq_id'},
+                'position=' . $vf->{'position'},
+                'strand=' . $vf->{'seq_region_strand'});
+      log_errors($config, $vf->{'variation_name'},
+                 'duplicate_variation_feature',
+                  $info);
+      next;
+    }
+    $seen_vf{$loc} = 1;
+
     $sth->execute($vf->{'variation_name'}, $map_weight,
                   $vf->{'seq_region_id'}, $vf->{'seq_region_start'}, $vf->{'seq_region_end'},
                   $vf->{'seq_region_strand'},
-                  $variation_id, $vf->{'allele_string'},
+                  $variation_id, $vf->{'allele_string'}, $vf->{'ancestral_allele'},
                   $source_id, $sets, $vf->{'class_attrib_id'},
                   $minor_allele, $maf, $minor_allele_count,
                   $evidence_attribs_str, $data->{'display'});
@@ -1250,6 +1482,12 @@ sub report_summary{
   print $report "Lines processed:\t$num_lines\n";
   print $report "Batch id:\t$batch_id\n";
 
+  if (!$config->{'db_load'}) {
+    print $report "Configured for no db load\n";
+    close($report);
+    return;
+  }
+
   my $dbh = $config->{'dbh_var'};
 
   my $variation_count = count_rows_batch($dbh, 'variation', 'variation_id', $batch_id);
@@ -1366,12 +1604,14 @@ sub configure {
     'input_file|i=s',
     'rpt_dir=s',
     'fasta_file=s',
+    'ancestral_fasta_file=s',
 
     'species=s',
     'registry|r=s',
     
     'no_db_load',
-    'no_ref_check'
+    'no_ref_check',
+    'no_assign_ancestral_allele'
     ) or pod2usage(2);
  
   # Print usage message if help requested or no args
@@ -1402,6 +1642,11 @@ sub configure {
     $config->{'ref_check'} = 0;
   } 
 
+  $config->{'assign_ancestral_allele'} = 1;
+  if (exists $config->{'no_assign_ancestral_allele'}) {
+    $config->{'assign_ancestral_allele'} = 0;
+  }
+
   # Check parameters
   if (! -e $config->{'input_file'}) {
     die("ERROR: Input file does not exist ($config->{'input_file'})\n");
@@ -1422,6 +1667,17 @@ sub configure {
                );
     } elsif (! -e $config->{'fasta_file'}) {
       die("ERROR: FASTA file does not exist ($config->{'fasta_file'})\n");
+    }
+  }
+
+  if ($config->{'assign_ancestral_allele'}) {
+    if (! defined $config->{'ancestral_fasta_file'}) {
+      pod2usage({ -message => "Mandatory argument (ancestral_fasta_file) is missing", 
+                  -exitval => 2,
+                }
+               );
+    } elsif (! -e $config->{'ancestral_fasta_file'}) {
+      die("ERROR: Ancestral FASTA file does not exist ($config->{'ancestral_fasta_file'})\n");
     }
   }
   return $config;  
@@ -1660,6 +1916,68 @@ sub get_study_frequency {
   return $study_freq;
 
 }
+
+# Get alignment diff between GRCh37 and GRCh38
+sub get_align_diff {
+  my ($rs_json) = @_;
+
+  my $align_info;
+
+  my $refsnp = $rs_json->{'refsnp_id'};
+
+  my $psd = $rs_json->{'primary_snapshot_data'};
+  if (! $psd) {
+    return;
+  }
+
+  # Number of placements with allele for that primary snapshot data
+  my $num_pwa = @{$psd->{'placements_with_allele'}};
+  if (! $num_pwa) {
+    return;
+  }
+
+  my ($grch37_loc, $grch38_loc, $grch37_aln_opp, $grch38_aln_opp) = (0,0,0,0);
+
+  # Loop through each of the placements
+  foreach my $loc (@{$psd->{'placements_with_allele'}}) {
+    # for each placement get
+    # the seq_id, is_ptlp, number of seq_id_trait_by_assemby,is_aln_opposite_orientation
+    my $seq_id = $loc->{'seq_id'};
+
+    # Only process the NC
+    next if ($seq_id !~ /^NC/);
+    my $assembly = $loc->{'placement_annot'}->{'seq_id_traits_by_assembly'}->[0]->{'assembly_name'};
+    if ($assembly =~ /GRCh37/) {
+      $grch37_loc++;
+      $grch37_aln_opp++ if ($loc->{'placement_annot'}->{'is_aln_opposite_orientation'});
+    }
+    if ($assembly =~ /GRCh38/) {
+      $grch38_loc++;
+      $grch38_aln_opp++ if ($loc->{'placement_annot'}->{'is_aln_opposite_orientation'});
+    }
+    my $is_ptlp = $loc->{'is_ptlp'};
+  }
+
+  my $review_status;
+  if (!$grch37_loc && !$grch38_loc) {
+    $review_status = 'NO_MAPPING_GRCh37_GRCh38';
+  } elsif (!$grch37_loc && $grch38_loc) {
+    $review_status = 'ONLY_GRCh38';
+  } elsif ($grch37_loc && !$grch38_loc) {
+    $review_status = 'ONLY_GRCh37';
+  } elsif ($grch37_aln_opp != $grch38_aln_opp) {
+    $review_status = 'ALIGN_DIFF';
+  }
+  if ($review_status) {
+    $align_info->{'grch37_loc'} = $grch37_loc;
+    $align_info->{'grch38_loc'} = $grch38_loc;
+    $align_info->{'grch37_aln_opp'} = $grch37_aln_opp;
+    $align_info->{'grch38_aln_opp'} = $grch38_aln_opp;
+    $align_info->{'review_status'} = $review_status;
+  }
+  return $align_info;
+}
+
 sub get_maf {
   my ($alleles_ref) = @_;
 
@@ -1772,7 +2090,7 @@ sub get_batch_id {
 sub get_sources {
   my ($dbh) = @_;
 
-  my @source_names = ('dbSNP', 'Archive dbSNP', 'dbSNP HGVS');
+  my @source_names = ('dbSNP', 'Archive dbSNP', 'dbSNP HGVS', 'Former dbSNP');
 
   my $sources = {};
   my $source_id;
@@ -1827,6 +2145,10 @@ JSON file provided by dbSNP
 
 Directory to store summary report and error logs
 
+=item B<--ancestral_fasta_file FILE>
+
+Path to FASTA file containing ancestral sequence
+
 =item B<--fasta_file FILE>
 
 Path to FASTA file containing reference sequence
@@ -1847,6 +2169,10 @@ No database load. Only parses the file. Used for testing.
 
 No reference checking
 
+=item B<--no_assign_ancestral_allele>
+
+No ancestral allele assignment
+
 =item B<--debug>
 
 Debug mode
@@ -1862,4 +2188,3 @@ Debug mode
   <https://www.ensembl.org/Help/Contact>.
 
 =cut
-
