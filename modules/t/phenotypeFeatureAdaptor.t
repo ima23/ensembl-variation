@@ -21,6 +21,7 @@ use Test::More;
 use FindBin qw($Bin);
 
 use Bio::EnsEMBL::Registry;
+use Bio::EnsEMBL::Attribute;
 use Bio::EnsEMBL::Variation::Population;
 use Bio::EnsEMBL::Test::TestUtils;
 use Bio::EnsEMBL::Test::MultiTestDB;
@@ -123,6 +124,22 @@ ok(ref($pfs) eq 'ARRAY' && scalar @$pfs == 2 && (grep {$_->object_id eq 'rs22992
 $pfs = $pfa->fetch_all_by_phenotype_id_feature_type(1, 'Gene');
 ok(ref($pfs) eq 'ARRAY' && scalar @$pfs == 1 && (grep {$_->object_id eq 'ENSG00000176105'} @$pfs), "fetch_all_by_phenotype_id_feature_type");
 
+# fetch_all_by_phenotype_class_attrib
+$pfs = $pfa->fetch_all_by_phenotype_class('trait');
+ok(ref($pfs) eq 'ARRAY' && scalar @$pfs == 5 && (grep {$_->phenotype_class == 665} @$pfs), "fetch_all_by_phenotype_class_attrib");
+
+# fetch_all_by_phenotype_class_Attribute_list
+my $traitAttr = Bio::EnsEMBL::Attribute->new
+      (-CODE => 'phenotype_type',
+      -VALUE => 'trait');
+my $nonspecAttr = Bio::EnsEMBL::Attribute->new
+     (-CODE => 'phenotype_type',
+      -VALUE => 'non_specified');
+$pfs = $pfa->fetch_all_by_phenotype_class_Attribute_list([$traitAttr,$nonspecAttr]);
+
+ok(ref($pfs) eq 'ARRAY' && scalar @$pfs == 6 && (grep {$_->phenotype_class == 663} @$pfs), "fetch_all_by_phenotype_class_Attribute_list");
+
+
 # fetch_all_by_Slice_with_ontology_accession
 my $sl_oa  = $sla->fetch_by_region('chromosome', 13, 86442400, 86442450);
 $pfs = $pfa->fetch_all_by_Slice_with_ontology_accession($sl_oa, 'Variation');
@@ -214,7 +231,7 @@ ok($count && $count->{'Variation'} == 1 && $count->{'StructuralVariation'} == 2 
 
 # fetch_all
 $pfs = $pfa->fetch_all();
-ok(ref($pfs) eq 'ARRAY' && scalar @$pfs == 6 && (grep {$_->object_id eq 'rs2299222'} @$pfs), "fetch_all");
+ok(ref($pfs) eq 'ARRAY' && scalar @$pfs == 7 && (grep {$_->object_id eq 'rs2299222'} @$pfs), "fetch_all");
 
 # store
 my $pf = $pfs->[0];

@@ -160,6 +160,94 @@ sub fetch_by_OntologyTerm {
 }
 
 
+=head2 fetch_all_by_class_attrib
+  Arg [1]    : string class attribute
+  Arg [2]    : (optional) boolean flag for including / excluding, default: including
+  Example    : $phenotype = $pheno_adaptor->fetch_all_by_class_attrib('trait');
+  Description: Retrieves a list of Phenotype objects for an class attribute
+               If no phenotype exists undef is returned.
+  Returntype : list ref of Bio::EnsEMBL::Variation::Phenotypes
+  Exceptions : throw if dbID arg is not defined
+  Caller     : general
+  Status     : Stable
+=cut
+
+sub fetch_all_by_class_attrib {
+  my $self = shift;
+  my $attrib_value = shift;
+  my $incl = shift;
+
+  $incl ||= 1;
+
+  my $class_attrib_id = $self->db->get_AttributeAdaptor->attrib_id_for_type_value("phenotype_type", $attrib_value);
+  my $constraint = "p.class_attrib_id ";
+  if ($incl) {
+    $constraint .= " = '$class_attrib_id'";
+  } else {
+    $constraint .= "!= '$class_attrib_id'";
+  }
+
+  return $self->generic_fetch($constraint);
+}
+
+
+=head2 fetch_by_class_attrib
+  Arg [1]    : Bio::EnsEMBL::Attribute
+  Example    : $phenotype = $pheno_adaptor->fetch_by_classAttrib( $attrib);
+  Description: Retrieves Phenotype objects of specific attrib type
+               If no phenotype exists undef is returned.
+  Returntype : list ref of Bio::EnsEMBL::Variation::Phenotypes
+  Exceptions : throw if dbID arg is not defined
+  Caller     : general
+  Status     : Stable
+=cut
+
+sub fetch_by_class_attrib {
+
+  my $self   = shift;
+  my $attrib = shift;
+
+  # Check an Attribute is supplied
+  assert_ref($attrib,'Bio::EnsEMBL::Attribute');
+
+  return $self->fetch_all_by_class_attribute($attrib->value());
+}
+
+
+=head2 fetch_all_by_Attribute_list
+
+  Arg [1]    : reference to a list of Bio::EnsEMBL::Variation::Attribute objects
+  Example    : my @ps = @{$pa->fetch_all_by_Attribute_list($attribs)};
+  Description: Retrieves all Phenotypes for a given list of class attributes
+  Returntype : reference to a list of Bio::EnsEMBL::Variation::Phenotype objects
+  Exceptions : throw on bad argument
+  Caller     : general
+  Status     : Stable
+
+=cut
+
+sub fetch_all_by_Attribute_list {
+  my $self = shift;
+  my $attribs = shift;
+
+  if(!ref($attribs) || !$attribs->[0]->isa('Bio::EnsEMBL::Attribute')) {
+    throw('Bio::EnsEMBL::Attribute arg expected');
+  }
+
+  if(!defined($attribs->[0]->value())) {
+    throw("Attribs arg must have defined value");
+  }
+
+  my $in_str = join ',', map {"'".
+            $self->db->get_AttributeAdaptor->attrib_id_for_type_value("phenotype_type", $_->value()).
+            "'"} @$attribs;
+
+  my $constraint = qq{p.class_attrib_id in ($in_str)};
+
+  return $self->generic_fetch($constraint);
+}
+
+
 
 sub _left_join {
   my $self = shift;
@@ -179,7 +267,7 @@ sub _tables {
 }
 
 sub _columns {
-    return qw(p.phenotype_id p.name p.description poa.accession poa.mapped_by_attrib poa.mapping_type);
+    return qw(p.phenotype_id p.name p.description p.class_attrib_id poa.accession poa.mapped_by_attrib poa.mapping_type);
 }
 
 sub _objs_from_sth {
@@ -214,6 +302,7 @@ sub _obj_from_row {
               dbID           => $row->{phenotype_id},
               name           => $row->{name},
               description    => $row->{description},
+              class_attrib_id=> $row->{class_attrib_id},
               adaptor        => $self,
             }); 
 
@@ -238,13 +327,15 @@ sub store{
     my $sth = $dbh->prepare(qq{
         INSERT INTO phenotype (
              name,
-             description
-        ) VALUES (?,?)
+             description,
+             class_attrib_id
+        ) VALUES (?,?,?)
     });
 
     $sth->execute(        
         $pheno->{name},
-        $pheno->{description}        
+        $pheno->{description},
+        $pheno->{class_attrib_id}
     );
 
     $sth->finish;

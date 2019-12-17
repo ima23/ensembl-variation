@@ -737,6 +737,80 @@ sub fetch_all_by_phenotype_accession_source {
   return $result;
 }
 
+=head2 fetch_all_by_phenotype_class
+
+  Arg [1]    : string $phenotype_class
+  Arg [2]    : (optional) boolean flag include/exclude, default: include
+  Example    : $pf = $pf_adaptor->fetch_all_by_phenotype_class('trait',1);
+  Description: Retrieves all PhenotypeFeature objects of a specific
+              class (include option) or all except a specific
+              class (exclude option)
+  Returntype : list of ref of Bio::EnsEMBL::Variation::PhenotypeFeature
+  Exceptions : throw if phenotype class argument is not defined
+  Caller     : general
+  Status     : At Risk
+
+=cut
+
+sub fetch_all_by_phenotype_class {
+
+  my $self         = shift;
+  my $attrib_value = shift;
+  my $incl         = shift;
+
+  throw('phenotype class argument expected') if(!defined($attrib_value));
+
+  $incl ||= 1;
+
+  my $class_attrib_id = $self->db->get_AttributeAdaptor->attrib_id_for_type_value("phenotype_type", $attrib_value);
+
+  my $extra_sql = ' p.class_attrib_id ';
+  if ($incl){
+    $extra_sql .= " = '$class_attrib_id'";
+  } else {
+    $extra_sql .= " != '$class_attrib_id'";
+  }
+
+  my $result = $self->generic_fetch($extra_sql);
+
+  return $result;
+}
+
+
+=head2 fetch_all_by_phenotype_class_Attribute_list
+
+  Arg [1]    : reference to a list of Bio::EnsEMBL::Variation::Attribute objects
+  Example    : my @pfs = @{$pfa->fetch_all_by_phenotype_class_Attribute_list($attribs)};
+  Description: Retrieves all PhenotypeFeatures for a given list of class attributes
+  Returntype : reference to a list of Bio::EnsEMBL::Variation::PhenotypeFeature objects
+  Exceptions : throw on bad argument
+  Caller     : general
+  Status     : Stable
+
+=cut
+
+sub fetch_all_by_phenotype_class_Attribute_list {
+  my $self = shift;
+  my $attribs = shift;
+
+  if(!ref($attribs) || !$attribs->[0]->isa('Bio::EnsEMBL::Attribute')) {
+    throw('Bio::EnsEMBL::Attribute arg expected');
+  }
+
+  if(!defined($attribs->[0]->value())) {
+    throw("Attribs arg must have defined value");
+  }
+
+  my $in_str = join ',', map {"'".
+            $self->db->get_AttributeAdaptor->attrib_id_for_type_value("phenotype_type", $_->value()).
+            "'"} @$attribs;
+
+  my $constraint = qq{p.class_attrib_id in ($in_str)};
+
+  return $self->generic_fetch($constraint);
+}
+
+
 =head2 fetch_all_by_phenotype_accession_type_source
 
   Arg [1]    : string $phenotype_ontology_accession
@@ -1301,7 +1375,7 @@ sub _columns {
   my @cols = qw(
     pf.phenotype_feature_id pf.object_id pf.type pf.is_significant
     pf.seq_region_id pf.seq_region_start pf.seq_region_end pf.seq_region_strand
-    pf.phenotype_id pf.source_id s.name pf.study_id p.description
+    pf.phenotype_id pf.source_id s.name pf.study_id p.description p.class_attrib_id
   ) ;
   push @cols, ('pfa.value','at.code') if $self->_include_attrib;
   push @cols, 'poa.accession'         if $self->_include_ontology;

@@ -287,6 +287,37 @@ sub phenotype_id {
 }
 
 
+=head2 phenotype_class
+
+  Example    : $id = $pf->phenotype_class();
+  Description: Convenience method to get the phenotype class
+               associated with this annotation.
+  Returntype : integer
+  Exceptions : none
+  Caller     : general
+  Status     : experimental
+
+=cut
+
+sub phenotype_class {
+  my $self = shift;
+
+  return $self->{_phenotype_class_attrib_id} if $self->{_phenotype_class_attrib_id};
+
+  if(!defined($self->{phenotype}) && defined($self->{_phenotype_id})) {
+    my $pa = $self->adaptor->db->get_PhenotypeAdaptor();
+
+    $self->{phenotype} = $pa->fetch_by_dbID($self->{_phenotype_id});
+  }
+
+  if (defined($self->{phenotype})) {
+    if ($self->{phenotype}->class_attrib_id) {
+      $self->{_phenotype_class_attrib_id} = $self->{phenotype}->class_attrib_id;
+      return $self->{phenotype}->class_attrib_id;
+    }
+  }
+}
+
 =head2 object
 
   Arg [1]    : (optional) Bio::EnsEMBL::* object $ph

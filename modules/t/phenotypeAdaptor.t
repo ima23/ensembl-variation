@@ -21,6 +21,7 @@ use Test::More;
 use FindBin qw($Bin);
 
 use Bio::EnsEMBL::Registry;
+use Bio::EnsEMBL::Attribute;
 use Bio::EnsEMBL::Variation::Population;
 use Bio::EnsEMBL::Test::TestUtils;
 use Bio::EnsEMBL::Test::MultiTestDB;
@@ -52,6 +53,27 @@ ok($p && $p->name eq 'ACH', "fetch_by_description");
   throws_ok { $pa->fetch_by_description_accession_type('BRUGADA SYNDROME','badType'); } qr/badType is not a valid mapping type, valid types are: 'is','involves'/, 'fetch_by_description_accession_type - badType';
 }
 
+{
+  my $phenos = $pa->fetch_all_by_class_attrib('trait');
+  ok($phenos && scalar @$phenos == 2, "fetch_all_by_class_attrib - count results");
+  my $p = $phenos->[0];
+  ok($p && $p->class_attrib_id == 665, "fetch_all_by_class_attrib - check attrib");
+
+  my $traitAttr = Bio::EnsEMBL::Attribute->new
+        (-CODE => 'phenotype_type',
+        -VALUE => 'trait');
+  my $nonspecAttr = Bio::EnsEMBL::Attribute->new
+       (-CODE => 'phenotype_type',
+        -VALUE => 'non_specified');
+
+  $phenos = $pa->fetch_all_by_Attribute_list([$traitAttr,$nonspecAttr]);
+  ok($phenos && scalar @$phenos == 3, "fetch_all_by_Attribute_list - count results");
+  $p = $phenos->[0];
+  ok($p && $p->class_attrib_id == 663, "fetch_all_by_Attribute_list - check attrib");
+
+}
+
+
 $p->name('test');
 $p->description('test');
 delete $p->{dbID};
@@ -60,6 +82,7 @@ delete $p->{dbID};
 ok($pa->store($p), "store");
 $p = $pa->fetch_by_description('test')->[0];
 ok($p && $p->name eq 'test', "fetch stored");
+ok($p && $p->class_attrib_id == 665, "store - default class_attrib_id");
 
 
 ## check ontology accession handling
