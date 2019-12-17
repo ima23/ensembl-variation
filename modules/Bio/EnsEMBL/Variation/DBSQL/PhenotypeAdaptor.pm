@@ -191,7 +191,7 @@ sub fetch_all_by_class_attrib {
 }
 
 
-=head2 fetch_by_class_attrib
+=head2 fetch_by_class_Attribute
   Arg [1]    : Bio::EnsEMBL::Attribute
   Example    : $phenotype = $pheno_adaptor->fetch_by_classAttrib( $attrib);
   Description: Retrieves Phenotype objects of specific attrib type
@@ -202,7 +202,7 @@ sub fetch_all_by_class_attrib {
   Status     : Stable
 =cut
 
-sub fetch_by_class_attrib {
+sub fetch_by_class_Attribute {
 
   my $self   = shift;
   my $attrib = shift;
