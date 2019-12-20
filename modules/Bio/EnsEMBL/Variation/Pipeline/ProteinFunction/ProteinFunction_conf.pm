@@ -89,7 +89,7 @@ sub default_options {
 
         # include RefSeq transcripts, and edit with accompanying BAM?
         include_refseq          => 0,
-        bam                     => '/nfs/production/panda/ensembl/variation/data/dump_vep/interim_GRCh38.p12_knownrefseq_alignments_2019-01-25.bam',
+        bam                     => '/nfs/production/panda/ensembl/variation/data/dump_vep/GCF_000001405.39_GRCh38.p13_knownrefseq_alns.bam',
 
         # GRCh37 bam
         # bam                     => '/nfs/production/panda/ensembl/variation/data/dump_vep/interim_GRCh37.p13_knownrefseq_alignments_2017-01-13.bam',        
@@ -180,14 +180,13 @@ sub default_options {
         dbnsfp_run_type         => NONE,
         dbnsfp_max_workers      => 50,
         dbnsfp_working          => $self->o('species_dir').'/dbnsfp_working',
-    
         dbnsfp_annotation       => { GRCh37 =>
-                                      { file => $self->o('variation_data') . '/dbNSFP/3.5a_grch37/dbNSFP3.5a_grch37.txt.gz',
-                                        version => '3.5a',
+                                      { file => $self->o('variation_data') . '/dbNSFP/4.0a/dbNSFP4.0a_grch37.gz',
+                                        version => '4.0a',
                                       },
                                      GRCh38 =>
-                                      { file => $self->o('variation_data') . '/dbNSFP/3.5a/dbNSFP3.5a.txt.gz',
-                                        version => '3.5a',
+                                      { file => $self->o('variation_data') . '/dbNSFP/4.0a/dbNSFP4.0a_grch38.gz',
+                                        version => '4.0a',
                                       } 
                                     },
         cadd_run_type         => NONE,
@@ -247,8 +246,10 @@ sub pipeline_analyses {
                 sift_run_type   => $self->o('sift_run_type'),
                 pph_run_type    => $self->o('pph_run_type'),
                 dbnsfp_run_type => $self->o('dbnsfp_run_type'),
+                dbnsfp_working  => $self->o('dbnsfp_working'),
                 dbnsfp_annotation => $self->o('dbnsfp_annotation'),
                 cadd_run_type   => $self->o('cadd_run_type'),
+                cadd_working    => $self->o('cadd_working'),
                 cadd_annotation => $self->o('cadd_annotation'),
                 include_lrg     => $self->o('include_lrg'),
                 polyphen_dir    => $self->o('pph_dir'),

@@ -354,9 +354,19 @@ sub _upstream {
 
 sub _downstream {
     my ($bvf, $feat, $dist) = @_;
+    $dist += get_max_shift_length($bvf);
     return $feat->strand == 1 ? 
         _after_end($bvf, $feat, $dist) : 
         _before_start($bvf, $feat, $dist);
+}
+
+sub get_max_shift_length {
+  my ($bvf) = shift;
+  my $max_shift_length = 0;
+  foreach my $hash (@{$bvf->{tva_shift_hashes}}){
+    $max_shift_length = $hash->{shift_length} if $hash->{shift_length} > $max_shift_length;
+  }
+  return $max_shift_length;
 }
 
 #package Bio::EnsEMBL::Variation::TranscriptVariationAllele;
@@ -679,7 +689,9 @@ sub _get_peptide_alleles {
 sub _get_ref_pep {
     my ($bvfoa, $feat, $bvfo, $bvf) = @_;
     $bvfo ||= $bvfoa->base_variation_feature_overlap;
-    return $bvfo->get_reference_TranscriptVariationAllele->peptide;
+    my $ref_tva = $bvfo->get_reference_TranscriptVariationAllele;
+    $ref_tva->{shift_hash} = $bvfoa->{shift_hash} if (defined($bvfoa->{shift_hash}));
+    return $ref_tva->peptide;
 }
 
 sub _get_codon_alleles {
@@ -795,8 +807,12 @@ sub _inv_start_altered {
         # make and edit UTR + translateable seq
         my $translateable = $bvfo->_translateable_seq();
         my $utr = $bvfo->_five_prime_utr();
-	return 0 unless $utr;
+        return 0 unless $utr;
         my $utr_and_translateable = ($utr ? $utr->seq : '').$translateable;
+        my $shifting_offset = defined($bvfoa->{shift_hash}) ? $bvfoa->{shift_hash}->{shift_length} : 0;
+        $cdna_start += $shifting_offset;
+        $cdna_end += $shifting_offset;
+        
         my $vf_feature_seq = $bvfoa->feature_seq;
         $vf_feature_seq = '' if $vf_feature_seq eq '-';
         my $atg_start = length($utr->seq);
@@ -815,8 +831,8 @@ sub start_retained_variant {
 
     $bvfo ||= $bvfoa->base_variation_feature_overlap;
     $bvf  ||= $bvfo->base_variation_feature;
-    
-    return 0 if ($bvf->allele_string eq 'COSMIC_MUTATION' || $bvf->allele_string eq 'HGMD_MUTATION');
+    # structural variants don't have an allele string 
+    return 0 if ($bvf->allele_string && ($bvf->allele_string eq 'COSMIC_MUTATION' || $bvf->allele_string eq 'HGMD_MUTATION'));
 
     my $pre = $bvfoa->_pre_consequence_predicates;
 
@@ -835,7 +851,10 @@ sub _overlaps_start_codon {
         $feat ||= $bvfo->feature;
         return 0 if grep {$_->code eq 'cds_start_NF'} @{$feat->get_all_Attributes()};
 
-        my ($cdna_start, $cdna_end) = ($bvfo->cdna_start, $bvfo->cdna_end);
+        my ($cdna_start, $cdna_end) = ($bvfo->cdna_start_unshifted, $bvfo->cdna_end_unshifted);
+        my $shifting_offset = defined($bvfoa->{shift_hash}) ? $bvfoa->{shift_hash}->{shift_length} : 0;
+        $cdna_start += $shifting_offset;
+        $cdna_end += $shifting_offset;
         return 0 unless $cdna_start && $cdna_end;
         
         $cache->{overlaps_start_codon} = overlap(
@@ -1103,8 +1122,8 @@ sub stop_retained {
     unless(exists($cache->{stop_retained})) {
         $bvfo ||= $bvfoa->base_variation_feature_overlap;
         $bvf  ||= $bvfo->base_variation_feature;
-
-        return 0 if ($bvf->allele_string eq 'COSMIC_MUTATION' || $bvf->allele_string eq 'HGMD_MUTATION');
+        # structural variants don't have an allele string
+        return 0 if ($bvf->allele_string && ($bvf->allele_string eq 'COSMIC_MUTATION' || $bvf->allele_string eq 'HGMD_MUTATION'));
 
         $cache->{stop_retained} = 0;
 
@@ -1220,7 +1239,7 @@ sub _ins_del_stop_altered {
 sub frameshift {
     my ($bvfoa, $feat, $bvfo, $bvf) = @_;
     $bvfo ||= $bvfoa->base_variation_feature_overlap;
-    
+
     # sequence variant
     if($bvfoa->isa('Bio::EnsEMBL::Variation::TranscriptVariationAllele')) {
 

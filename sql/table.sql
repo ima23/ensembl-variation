@@ -406,6 +406,7 @@ CREATE TABLE IF NOT EXISTS `phenotype_feature_attrib` (
 @column stable_id            Ensembl stable identifier for the phenotype
 @column name                 Phenotype short name. e.g. "CAD".
 @column description varchar  Phenotype long name. e.g. "Coronary Artery Disease".
+@column class_attrib_id      Class of phenotype entry, eg trait, non_specified, tumour - used for filtering
 
 @see phenotype_feature
 */
@@ -415,6 +416,7 @@ CREATE TABLE `phenotype` (
   `stable_id` VARCHAR(255) DEFAULT NULL,
   `name` VARCHAR(50) DEFAULT NULL,
   `description` VARCHAR(255) DEFAULT NULL,
+  `class_attrib_id` INT DEFAULT NULL,
   PRIMARY KEY (`phenotype_id`),
   KEY `name_idx` (`name`),
   UNIQUE KEY `desc_idx` (`description`),
@@ -1192,6 +1194,8 @@ CREATE TABLE structural_variation_association (
 @column somatic                          Flags whether this structural variation is known to be somatic or not
 @column breakpoint_order                 Defines the order of the breakpoints when several events/mutation occurred for a structural variation (e.g. somatic mutations)
 @column length                           Length of the structural variant. Used for the variants with a class "insertion", when the size of the insertion is known.
+@column allele_freq                      The frequency reported for this allele in this study.
+@column allele_count                     The number of times this allele is observed in this study.
 
 @see structural_variation
 @see source
@@ -1231,6 +1235,8 @@ CREATE TABLE structural_variation_feature (
           '49','50','51','52','53','54','55','56',
           '57','58','59','60','61','62','63','64'
   ) NOT NULL DEFAULT '',
+  allele_freq FLOAT DEFAULT NULL,
+  allele_count INT(10) UNSIGNED DEFAULT NULL,
 	
   PRIMARY KEY (structural_variation_feature_id),
 	KEY pos_idx ( seq_region_id, seq_region_start, seq_region_end ),
@@ -1831,6 +1837,8 @@ INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'schema_type',
 
 # Patch IDs for new release
 INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_99_100_a.sql|schema version');
+INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_99_100_b.sql|add frequency to structural variation');
+INSERT INTO meta (species_id, meta_key, meta_value) VALUES (NULL, 'patch', 'patch_99_100_c.sql|add class_attrib_id column to phenotype');
 
 /**
 @header  Failed tables
