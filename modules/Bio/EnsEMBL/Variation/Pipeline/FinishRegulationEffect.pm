@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ sub run {
       variation_feature_id int(10), 
       consequence_types set($consequence_types) NOT NULL DEFAULT 'intergenic_variant',
       key variation_feature_idx(variation_feature_id)
-    );});
+    )engine=MyISAM;});
 
     for my $table (@regulatory_tables) {
       $dbc->do(qq{
@@ -75,7 +75,7 @@ sub run {
       variation_feature_id int(10), 
       consequence_types set($consequence_types) NOT NULL DEFAULT 'intergenic_variant',
       key variation_feature_idx(variation_feature_id)
-    );});
+    )engine=MyISAM;});
 
     $dbc->do(qq{
       INSERT INTO variation_feature_overlap_regulation(variation_feature_id, consequence_types)

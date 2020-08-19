@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ my $multi = Bio::EnsEMBL::Test::MultiTestDB->new();
 
 my $vdb = $multi->get_DBAdaptor('variation');
 my $db  = $multi->get_DBAdaptor('core');
+my $ofdb  = $multi->get_DBAdaptor('otherfeatures');
 
 $vdb->dnadb($db);
 
@@ -42,6 +43,7 @@ my $trv_ad = $vdb->get_TranscriptVariationAdaptor();
 my $tr_ad  = $db->get_TranscriptAdaptor;
 my $s_ad   = $db->get_SliceAdaptor();
 my $g_ad = $db->get_GeneAdaptor();
+my $tr_ad_of = $ofdb->get_TranscriptAdaptor();
 
 ok($trv_ad && $trv_ad->isa('Bio::EnsEMBL::Variation::DBSQL::TranscriptVariationAdaptor'));
 
@@ -349,5 +351,117 @@ for my $allele (@{$trvar_msc->get_all_alternate_BaseVariationFeatureOverlapAllel
 my $msc_2_expected = 'test_consequence_a';
 my $msc_2 = $trvar_msc->most_severe_OverlapConsequence();
 is($msc_2->SO_term, $msc_2_expected, 'tv - most_severe_OverlapConsequence - same rank');
+
+## RefSeq Mismatch Testing
+my $tr = $tr_ad_of->fetch_by_stable_id('NM_001270408.1');
+my $sl_refseq = $s_ad->fetch_by_region('chromosome', 21);
+$vf_ad->db->shift_hgvs_variants_3prime(0);
+
+my $vf_refseq = Bio::EnsEMBL::Variation::VariationFeature->new
+  (-seq_region_name => 21,
+   -start => 25700000,
+   -end   => 25700000,
+   -slice => $sl_refseq,
+   -strand => 1,
+   -variation_name => 'refseq_test',
+   -allele_string => 'G/A',
+   -adaptor     => $vf_ad
+);
+
+$tv = Bio::EnsEMBL::Variation::TranscriptVariation->new(
+    -transcript     => $tr,
+    -variation_feature  => $vf_refseq,
+    -adaptor      => $trv_ad,
+    -no_shift     => 1,
+);
+
+## Setting CDS coordinates allows us to set up niche case where mismatches are calculated
+my @tvas = @{ $tv->get_all_alternate_TranscriptVariationAlleles };
+
+## The following predicate is normally set in _bvfo_preds, however due to the limited quantity of data within the test database,
+## calling the method is insufficient right now. Rather than rewriting chunks of the test db, I've added in the predicate value here
+$tvas[0]->{pre_consequence_predicates}->{exon} = 1;
+
+$tv->cds_start(1234);
+$tv->cds_end(1233);
+$tv->cdna_start(1000);
+$tv->transcript->{cdna_coding_start} = 234;
+
+## Coordinate within HGVS matches cds_start as these values take mismatch into account 
+ok($tv->hgvs_transcript->{A} eq 'NM_001270408.1:c.1234N>A', 'Refseq HGVS mismatch calculated');
+
+## Misalignment offset calculated from transcript edits recognises insertion of 4BP
+my @attribs = @{$tr->get_all_Attributes()};
+my @edit_attrs = grep {$_->code =~ /^_rna_edit/} @attribs;
+ok($tvas[0]->get_misalignment_offset(\@edit_attrs) == 4, 'Misalignment offset');
+
+
+# Testing for transcript_variation.hgvs_genomic 'NULL' (string)
+# and NULL (value)
+#
+# An existing database record is used for testing
+# A backup of transcript_variation done at start of test
+# and restored at end of test.
+{
+  # Backup the table before test
+  $multi->save('variation', 'transcript_variation');
+
+  # Data used for test
+  # transcript_variation_id: 92216616
+  #          variation_name: rs7949754
+  #           allele_string: G/A
+  #    variation_feature_id: 4806434
+  # transcript_variation_id: 92216616
+  #            hgvs_genomic: 11:g.66328199G>A
+  my $dbID = 92216616;
+  my $variant = 'rs7949754';
+  my $expected_hgvs_genomic = 'NC_000011.9:g.66328199G>A';
+  my $dbh = $trv_ad->dbc->db_handle();
+
+  # Test setting transcript_variation.hgvs_genomic
+  # to 'NULL' (the string)
+  my $sql = qq{
+    UPDATE transcript_variation
+    SET hgvs_genomic = 'NULL'
+    WHERE transcript_variation_id = $dbID
+  };
+
+  my $count = $dbh->do($sql);
+  ok($count == 1 , "Update to 'NULL' string for testing");
+
+  # Fetch by dbID
+  my $tv_by_dbID = $trv_ad->fetch_by_dbID($dbID);
+  my $hgvs_db = $tv_by_dbID->{alt_alleles}->[0]->{hgvs_genomic};
+  is($hgvs_db, undef, "hgvs_genomic set to undefined when 'NULL'");
+
+  # Fetch all TranscriptVariations related to a VariationFeature
+  my $var = $var_ad->fetch_by_name($variant);
+  my $vf = $vf_ad->fetch_all_by_Variation($var_ad->fetch_by_name($variant))->[0];
+  my $tv = @{$trv_ad->fetch_all_by_VariationFeatures([$vf])}[0];
+  my $hgvs_genomic = $tv->hgvs_genomic->{'A'};
+  is($hgvs_genomic, $expected_hgvs_genomic, "Lookup hgvs_genomic when 'NULL' in TV");
+
+  # Testing setting transcript_variation.hgvs_genomic to NULL (the value)
+  $sql = qq{
+    UPDATE transcript_variation
+    SET hgvs_genomic = NULL
+    WHERE transcript_variation_id = $dbID
+  };
+
+  $count = $dbh->do($sql);
+  ok($count == 1 , "Update to NULL for testing");
+
+  $tv_by_dbID = $trv_ad->fetch_by_dbID($dbID);
+  $hgvs_db = $tv_by_dbID->{alt_alleles}->[0]->{hgvs_genomic};
+  is($hgvs_db, undef, 'hgvs_genomic set to undefined when NULL');
+
+  # Fetch all TranscriptVariations related to a VariationFeature
+  my $tv_2 = @{$trv_ad->fetch_all_by_VariationFeatures([$vf])}[0];
+  $hgvs_genomic = $tv_2->hgvs_genomic->{'A'};
+  is($hgvs_genomic, $expected_hgvs_genomic, "Lookup hgvs_genomic when NULL in TV");
+
+  # Restore table to what it was at start of test
+  $multi->restore('variation', 'transcript_variation');
+}
 
 done_testing();

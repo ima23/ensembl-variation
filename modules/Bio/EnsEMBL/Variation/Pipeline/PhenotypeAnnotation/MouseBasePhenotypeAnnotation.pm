@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ sub fetch_data_version {
   die "data_release_date not defined\n" unless $data_release_date;
 
  # e.g. 20 October 2015
-  my ($date, $month, $year) = split(' ', $hash->{data_release_date}) ;
+  my ($date, $month, $year) = split(/[\s-]/, $hash->{data_release_date}) ;
 
   my $months = {
     'January' => '01',
@@ -303,7 +303,7 @@ sub parse_input_file {
         my $individual = new Bio::EnsEMBL::Variation::Individual(
             -name => $strain_name,
             -gender => $gender,
-            -individual_type_id => 1,
+            -type_individual => 'fully_inbred',
         );
         $individual_adaptor->store($individual);
         $strain_id = $individual_adaptor->last_insert_id();

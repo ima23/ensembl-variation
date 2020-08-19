@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,10 +38,11 @@ limitations under the License.
 Bio::EnsEMBL::Variation::DBSQL::PhenotypeAdaptor
 
 =head1 SYNOPSIS
+
   $reg = 'Bio::EnsEMBL::Registry';
-  
+
   $reg->load_registry_from_db(-host => 'ensembldb.ensembl.org',-user => 'anonymous');
-  
+
   $pa = $reg->get_adaptor("human","variation","phenotype");
 
   # Get a list of all phenotypes.
@@ -68,6 +69,7 @@ use Bio::EnsEMBL::Utils::Exception qw(throw);
 our @ISA = ('Bio::EnsEMBL::DBSQL::BaseAdaptor');
 
 =head2 fetch_by_description
+
   Arg [1]    : string $description
   Example    : $phenotype = $pheno_adaptor->fetch_all_by_description('diabetes');
   Description: Retrieves a list of Phenotype objects for a phenotype description
@@ -86,6 +88,7 @@ sub fetch_by_description {
 }
 
 =head2 fetch_by_description_accession_type
+
   Arg [1]    : string $description
   Arg [2]    : string $mapping_type - default 'is', option 'involves'
   Example    : $phenotype = $pheno_adaptor->fetch_by_description_accession_type('diabetes');
@@ -114,6 +117,7 @@ sub fetch_by_description_accession_type {
 }
 
 =head2 fetch_all_by_ontology_accession
+
   Arg [1]    : string ontology accession
   Arg [2]    : string mapping type (is/involves)  optional
   Example    : $phenotype = $pheno_adaptor->fetch_all_by_ontology_accession('EFO:0000712', 'is');
@@ -137,6 +141,7 @@ sub fetch_all_by_ontology_accession {
 }
 
 =head2 fetch_by_OntologyTerm
+
   Arg [1]    : Bio::EnsEMBL::OntologyTerm
   Arg [2]    : string mapping type (is/involves)  optional
   Example    : $phenotype = $pheno_adaptor->fetch_by_OntologyTerm( $ontologyterm, 'involves');
@@ -163,11 +168,12 @@ sub fetch_by_OntologyTerm {
 
 sub _left_join {
   my $self = shift;
-  
+
   my @lj = ();
   
   push @lj, (
-    [ 'phenotype_ontology_accession', 'p.phenotype_id = poa.phenotype_id' ]
+    [ 'phenotype_ontology_accession', 'p.phenotype_id = poa.phenotype_id' ],
+    [ 'attrib', 'p.class_attrib_id = a.attrib_id']
   ) ;
   
   return @lj;
@@ -175,16 +181,17 @@ sub _left_join {
 
 sub _tables {
     return (['phenotype', 'p'],
-            ['phenotype_ontology_accession', 'poa'] );
+            ['phenotype_ontology_accession', 'poa'],
+            ['attrib', 'a'] );
 }
 
 sub _columns {
-    return qw(p.phenotype_id p.name p.description poa.accession poa.mapped_by_attrib poa.mapping_type);
+    return qw(p.phenotype_id p.name p.description p.class_attrib_id a.value poa.accession poa.mapped_by_attrib poa.mapping_type);
 }
 
 sub _objs_from_sth {
     my ($self, $sth) = @_;
-    
+
     my %row;
 
     $sth->bind_columns( \( @row{ @{$sth->{NAME_lc} } } ));
@@ -214,12 +221,15 @@ sub _obj_from_row {
               dbID           => $row->{phenotype_id},
               name           => $row->{name},
               description    => $row->{description},
+              class_attrib_id => $row->{class_attrib_id},
               adaptor        => $self,
             }); 
 
       $self->{_temp_objs}{$row->{phenotype_id}} = $obj;
 
     }
+    # Add class attrib value if available
+    $obj->class_attrib( $row->{value}) if defined $row->{value} ;
 
     # Add a ontology accession if available
     my $link_source = $self->db->get_AttributeAdaptor->attrib_value_for_id($row->{mapped_by_attrib})
@@ -230,21 +240,51 @@ sub _obj_from_row {
                                    mapping_type   => $row->{mapping_type} }) if defined $row->{accession} ;
 }
 
+=head2 get_all_phenotype_class_types
+
+  Example    : $phenotype_classes = $pheno_adaptor->get_all_phenotype_class_types();
+  Description: Retrieves the list of existing phenotype class attribs
+               If no phenotype class type exists undef is returned.
+  Returntype : list ref of string
+  Exceptions : none
+  Caller     : general
+=cut
+
+sub get_all_phenotype_class_types {
+  my $self = shift;
+
+  my $phenos= $self->generic_fetch();
+  my %pheno_class_attribs=();
+  foreach my $pheno (@$phenos){
+    $pheno_class_attribs{$pheno->class_attrib} = 1;
+  }
+
+  return values %pheno_class_attribs;
+}
+
 sub store{
    my ($self, $pheno) = @_;
+
+   # ensure phenotype class_attrib_id is present if class_attrib is
+   if (defined $pheno->{class_attrib} && ! defined $pheno->{class_attrib_id}){
+    my $class_attrib_id = $self->db->get_AttributeAdaptor->attrib_id_for_type_value('phenotype_type', $pheno->{class_attrib});
+    $pheno->{class_attrib_id} = $class_attrib_id;
+   }
 
     my $dbh = $self->dbc->db_handle;
 
     my $sth = $dbh->prepare(qq{
         INSERT INTO phenotype (
              name,
-             description
-        ) VALUES (?,?)
+             description,
+             class_attrib_id
+        ) VALUES (?,?,?)
     });
 
     $sth->execute(        
         $pheno->{name},
-        $pheno->{description}        
+        $pheno->{description},
+        $pheno->{class_attrib_id}
     );
 
     $sth->finish;

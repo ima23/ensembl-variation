@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -186,8 +186,8 @@ while (<IN>) {
   $cosmic_ins_sth->bind_param(1,$cosv_id,SQL_VARCHAR);
   $cosmic_ins_sth->bind_param(2,$seq_region_id,SQL_INTEGER);
   if ($class eq 'insertion' ){
-    $cosmic_ins_sth->bind_param(3,$end+1,SQL_INTEGER);
-    $cosmic_ins_sth->bind_param(4,$end,SQL_INTEGER);
+    $cosmic_ins_sth->bind_param(3,$end,SQL_INTEGER);
+    $cosmic_ins_sth->bind_param(4,$start,SQL_INTEGER);
   } else {
     $cosmic_ins_sth->bind_param(3,$start,SQL_INTEGER);
     $cosmic_ins_sth->bind_param(4,$end,SQL_INTEGER);

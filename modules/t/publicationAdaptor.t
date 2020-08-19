@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 use strict;
 use warnings;
 use Test::More;
-
+use Test::Deep;
+use Test::Exception;
 
 use Bio::EnsEMBL::Test::TestUtils;
 use Bio::EnsEMBL::Test::MultiTestDB;
@@ -76,6 +77,21 @@ $va->db->include_failed_variations(1);
 my $varfs = $va->fetch_all_by_publication($pubs->[0]);
 ok(scalar(@{$varfs}) ==2,   "variation count by publication - inc fails");
 
+## Authors stored as NULL when value not provided ("" or 0)
+my $pub_store_null = Bio::EnsEMBL::Variation::Publication->new( 
+                -title    => "ABCD",
+                -authors  => "",
+                -pmid     => 57,
+                -pmcid    => "PMC57",
+                -ucsc_id  => "12345",
+                -year     => 2020,
+                -doi      => "doi:12345",
+                -adaptor  => $pa
+                );
+
+$pa->store($pub_store_null);
+my $publication = $pa->fetch_by_dbID($pub_store_null->dbID);
+ok(!defined $publication->authors(), "authors NULL");
 
 ## store
 my $pub_store = Bio::EnsEMBL::Variation::Publication->new( 
@@ -105,5 +121,27 @@ $var = $va->fetch_by_dbID(4770800);
 $pa->update_variant_citation($pubup, 615, [$var]);
 ok($pubup->variations()->[0]->name() eq 'rs7569578', "citation update");
 
+# publication sources
+throws_ok { $pub_store->set_variation_id_to_source('var', 'EPMC'); } qr/variation_id is not valid/, 'Throw OK if variation id not valid';
+throws_ok { $pub_store->set_variation_id_to_source(4770800, 'Cosmic'); } qr/Source is not valid/, 'Throw OK if publication source not valid';
+$pub_store->set_variation_id_to_source(4770800, 'UCSC');
+$pub_store->set_variation_id_to_source(4770800, 'dbSNP');
+
+throws_ok { $pub_store->get_all_sources_by_Variation(); } qr/Variation argument is required/, 'Throw OK if variation object is not valid';
+my $publication_var_sources = $pub_store->get_all_sources_by_Variation($var);
+ok(scalar @$publication_var_sources == 2, 'get_all_sources_by_Variation - Number of sources');
+
+my $expected_source_1 = { 'dbSNP' => 1 };
+my $expected_source_2 = { 'EPMC' => 1,
+                          'dbSNP' => 1 };
+
+my $variation = $va->fetch_by_dbID(26469702);
+my $publications = $pa->fetch_all_by_Variation($variation);
+is_deeply($publications->[0]->{variation_id_to_source}->{26469702}, $expected_source_1, "fetch_all_by_Variation - publication sources 1");
+is_deeply($publications->[1]->{variation_id_to_source}->{26469702}, $expected_source_2, "fetch_all_by_Variation - publication sources 2");
+# Citation without source
+my $variation_no_citation = $va->fetch_by_dbID(39404961);
+my $publications_no_citation = $pa->fetch_all_by_Variation($variation_no_citation);
+ok(!$publications_no_citation->[0]->{variation_id_to_source}, 'fetch_all_by_Variation - source not defined');
 
 done_testing();

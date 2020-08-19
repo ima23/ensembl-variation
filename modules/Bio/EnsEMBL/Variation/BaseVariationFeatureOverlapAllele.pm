@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -265,7 +265,8 @@ sub get_all_OverlapConsequences {
     OC: for my $oc (@oc_list) {
 
       last if $assigned_tier && $oc->{tier} > $assigned_tier;
-      my $shifting_offset = defined($self->{shift_hash}) ? $self->{shift_hash}->{shift_length} * $tr->strand : 0;
+      ## $bvfo->{shifted} is defined in the new method of TranscriptVariation.pm
+      my $shifting_offset = $bvfo->{shifted} && defined($self->{shift_hash}) ? $self->{shift_hash}->{shift_length} * $tr->strand : 0;
             
       $bvf->{start} += $shifting_offset;
       $bvf->{end} += $shifting_offset;
@@ -354,7 +355,7 @@ sub _pre_consequence_predicates {
     $self->_update_preds($preds, 'vf_class', ref($bvf), \$pred_digest);
     
     # get BVF (variant genomic location) preds, copy to "main"
-    $bvf->{pre_consequence_predicates} ||= $self->_bvf_preds($feat, $bvfo, $bvf, $preds);
+    $bvf->{pre_consequence_predicates} = $self->_bvf_preds($feat, $bvfo, $bvf, $preds);
     @$preds{keys %{$bvf->{pre_consequence_predicates}}} = values %{$bvf->{pre_consequence_predicates}};
     $pred_digest .= $bvf->{pre_consequence_predicates}->{_digest};
     

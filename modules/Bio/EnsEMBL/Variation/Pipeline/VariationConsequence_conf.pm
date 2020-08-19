@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -95,6 +95,10 @@ sub default_options {
         
         disambiguate_single_nucleotide_alleles => 0,
 
+        # shifting variants within repeated regions in the 3' direction is switched off by default.
+	
+        prevent_shifting => 1,
+
         # configuration for the various resource options used in the pipeline
         # Users of other farms should change these here, or override them on
         # the command line to suit your farm. The names of each option hopefully
@@ -138,9 +142,12 @@ sub default_options {
         max_distance => undef,
 
         # these flags control which parts of the pipeline are run
-
         run_transcript_effect   => 1,
         run_variation_class     => 1,
+
+        # Human runs switch off run_var_class and set max_distance to 0 by default. To override
+        # this behaviour, set this flag to 1
+        human_default_override		=> 0,
 
         # connection parameters for the hive database, you should supply the hive_db_password
         # option on the command line to init_pipeline.pl (parameters for the target database
@@ -186,7 +193,7 @@ sub pipeline_analyses {
         ensembl_registry    => $self->o('reg_file'),
         species             => $self->o('species'),
         pipeline_dir => $self->o('pipeline_dir'),
-        max_distance => $self->o('max_distance'),
+        max_distance => ($self->o('species') =~ /homo_sapiens|human/ && (! $self->o('human_default_override'))) ? 0 : $self->o('max_distance'),
     );
    
     my @analyses;
@@ -269,6 +276,7 @@ sub pipeline_analyses {
               mtmp_table => $self->o('mtmp_table'),
               fasta => $self->o('fasta'),
               disambiguate_single_nucleotide_alleles => $self->o('disambiguate_single_nucleotide_alleles'),
+              prevent_shifting => $self->o('prevent_shifting'),
               @common_params,
             },
             -rc_name   => 'default',
@@ -281,6 +289,7 @@ sub pipeline_analyses {
               mtmp_table => $self->o('mtmp_table'),
               fasta => $self->o('fasta'),
               disambiguate_single_nucleotide_alleles => $self->o('disambiguate_single_nucleotide_alleles'),
+              prevent_shifting => $self->o('prevent_shifting'),
               @common_params,
             },
             -rc_name   => 'medmem',
@@ -297,6 +306,7 @@ sub pipeline_analyses {
               mtmp_table => $self->o('mtmp_table'),
               fasta => $self->o('fasta'),
               disambiguate_single_nucleotide_alleles => $self->o('disambiguate_single_nucleotide_alleles'),
+              prevent_shifting => $self->o('prevent_shifting'),
               @common_params,
             },
           },
@@ -345,7 +355,7 @@ sub pipeline_analyses {
         );
     }
 
-   if ($self->o('run_variation_class')) {
+   if ($self->o('run_variation_class') && (($self->o('species') !~ /homo_sapiens|human/) || $self->o('human_default_override'))) {
 
         push @analyses, (
 

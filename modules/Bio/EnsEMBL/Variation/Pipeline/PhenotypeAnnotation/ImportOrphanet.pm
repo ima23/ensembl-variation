@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,8 +56,6 @@ sub fetch_input {
   my $species      = $self->required_param('species');
 
   $self->debug($self->param('debug_mode'));
-  $self->core_db_adaptor($self->get_species_adaptor('core'));
-  $self->variation_db_adaptor($self->get_species_adaptor('variation'));
 
   my $orphanet_data_url = 'http://www.orphadata.org/data/xml/en_product6.xml';
 
@@ -155,7 +153,7 @@ sub parse_input_file {
   my $date = $1.$2.$3;
 
   foreach my $disorder ($orphanet_doc->findnodes('JDBOR/DisorderList/Disorder')) {
-    my ($orpha_number_node) = $disorder->findnodes('./OrphaNumber');
+    my ($orpha_number_node) = $disorder->findnodes('./OrphaCode');
     my $orpha_number = $orpha_number_node->to_literal;
     my ($name_node) = $disorder->findnodes('./Name');
     my $name = $name_node->to_literal;

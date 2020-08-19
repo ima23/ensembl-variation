@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ use warnings;
 use File::Path qw(make_path);
 use File::stat;
 use POSIX qw(strftime);
+use Data::Dumper;
 
 use base ('Bio::EnsEMBL::Variation::Pipeline::PhenotypeAnnotation::BasePhenotypeAnnotation');
 
@@ -66,24 +67,27 @@ my %animalQTL_species_url = (
   gallus_gallus => $animalqtl_baseURL.'QTL_GG_5.0.gff.txt.gz', #Gallus gallus
   sus_scrofa => $animalqtl_baseURL.'QTL_SS_11.1.gff.txt.gz', #Sus scrofa
   ovis_aries => 'https://www.animalgenome.org/QTLdb/tmp/QTL_OAR_3.1.gff.txt.gz',  # Ovis aries #TODO: replace with the one in export once it is there
-  bos_taurus => $animalqtl_baseURL.'QTL_BovARS_1.2.gff.txt.gz', #Bos taurus
+  bos_taurus => $animalqtl_baseURL.'QTL_ARS-UCD_1.2.gff.txt.gz', #Bos taurus
   equus_caballus => $animalqtl_baseURL.'QTL_EquCab2.0.gff.txt.gz', #Equus caballus
+  ovis_aries_rambouillet => "",
 );
 
 my %animalQTL_species_fileNames = (
-  gallus_gallus => 'gallus_gallus_gbp_5.0.gff3.gz', #Gallus gallus
-  sus_scrofa => 'sus_scrofa_gbp_11.1.gff3.gz', #Sus scrofa
-  ovis_aries => 'ovis_aries_gbp_3.1.gff3.gz',  # Ovis aries #TODO: replace with the one in export once it is there
-  bos_taurus => 'bos_taurus_gbp_1.2.gff3.gz', #Bos taurus
-  equus_caballus => 'equus_caballus_gbp_2.0.gff3.gz', #Equus caballus
+  gallus_gallus => 'QTL_gallus_gallus_gbp_5.0.gff3.gz', #Gallus gallus
+  sus_scrofa => 'QTL_sus_scrofa_gbp_11.1.gff3.gz', #Sus scrofa
+  ovis_aries => 'QTL_ovis_aries_gbp_3.1.gff3.gz',  # Ovis aries #TODO: replace with the one in export once it is there
+  bos_taurus => 'QTL_bos_taurus_gbp_1.2.gff3.gz', #Bos taurus
+  equus_caballus => 'QTL_equus_caballus_gbp_2.0.gff3.gz', #Equus caballus
+  ovis_aries_rambouillet => 'QTL_', # place holder, as ovis aries data was remapped
 );
 
 my %animalQTL_species_ok = (
-  gallus_gallus => 0, #Gallus gallus same Ensembl assembly as AnimalQTL
+  gallus_gallus => 0, #Gallus gallus not same Ensembl assembly as AnimalQTL
   sus_scrofa => 1, #Sus scrofa
-  ovis_aries => 1,  # Ovis aries
+  ovis_aries => 1,  #Ovis aries
   bos_taurus => 1, #Bos taurus
-  equus_caballus => 0, #Equus caballus
+  equus_caballus => 0, #Equus caballus: not same Ensembl assembly as AnimalQTL
+  ovis_aries_rambouillet => 0,
 );
 
 
@@ -93,6 +97,7 @@ sub fetch_input {
 
   my $pipeline_dir = $self->required_param('pipeline_dir');
   my $species      = $self->required_param('species');
+  my $threshold    = $self->param('threshold_qtl');
 
   # import specific constants
   %source_info = (source_description => 'The Animal Quantitative Trait Loci (QTL) database (Animal QTLdb) is designed to house all publicly available QTL and association data on livestock animal species',
@@ -102,20 +107,28 @@ sub fetch_input {
                   source_status     => 'germline',
                   source_name       => 'Animal_QTLdb', #source name in the variation db
                   source_name_short => 'AnimalQTLdb',  #source identifier in the pipeline
-                  threshold => $self->required_param('threshold_qtl'),
+                  data_types        => 'phenotype_feature,study',
+                  threshold => $threshold,
                   );
 
   #create workdir folder
   my $workdir = $pipeline_dir."/".$source_info{source_name_short}."/".$species;
-  make_path($workdir) or die "Failed to create $workdir $!\n";
+  unless (-d $workdir) {
+    my $err;
+    make_path($workdir, {error => \$err});
+    die "make_path failed: ".Dumper($err) if $err && @$err;
+  }
   $self->workdir($workdir);
 
-  return unless $animalQTL_species_ok{$species};
+  # if not new data imported, still update source date check
+  if ( ! $animalQTL_species_ok{$species}){
+    # Get or add a source
+    $source_info{source_version} = strftime("%Y%m%d", localtime);
+    my $source_id = $self->get_or_add_source(\%source_info);
+    return;
+  }
 
   $self->debug($self->param('debug_mode'));
-  $self->core_db_adaptor($self->get_species_adaptor('core'));
-  $self->variation_db_adaptor($self->get_species_adaptor('variation'));
-  $self->ontology_db_adaptor($self->get_adaptor('multi', 'ontology'));
 
   open(my $logFH, ">", $workdir."/".'log_import_out_'.$source_info{source_name_short}.'_'.$species) || die ("Failed to open file: $!\n");
   open(my $errFH, ">", $workdir."/".'log_import_err_'.$source_info{source_name_short}.'_'.$species) || die ("Failed to open file: $!\n");
@@ -126,7 +139,7 @@ sub fetch_input {
 
   # check if the species assembly specific file exists
   my $animalqtl_inputDir = $pipeline_dir."/".$source_info{source_name_short}."/animalqtl_data";
-  print $logFH "AnimalQTL import expects input folder with gff3 files: example format gallus_gallus.*.gff3  \n" if ($self->debug);
+  print $logFH "AnimalQTL import expects input folder with gff3 files: example format QTL_gallus_gallus.*.gff3  \n" if ($self->debug);
   print $logFH "using input folder: $animalqtl_inputDir for species: $species \n" if ($self->debug);
 
   my $inputFile = $animalqtl_inputDir."/".$animalQTL_species_fileNames{$species};
@@ -145,7 +158,7 @@ sub fetch_input {
     closedir(INDIR);
     my $ok = 0;
     foreach my $file (@files){
-      if ($file =~/^$species.*gff3$/ || $file =~/^$species.*gff3.gz$/){
+      if ($file =~/^QTL_$species.*gff3$/ || $file =~/^QTL_$species.*gff3.gz$/){
         $inputFile = $file;
         $ok = 1;
         last;
@@ -164,7 +177,7 @@ sub fetch_input {
   }
 
   #allow time between file download and file read for system to sync
-  sleep(30);
+  sleep(45);
 
   #fetch coreDB assembly, in future this should be tested against
   my $gc =  $self->core_db_adaptor->get_adaptor('GenomeContainer');

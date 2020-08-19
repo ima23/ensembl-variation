@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -249,13 +249,13 @@ sub update {
         $var->{source} ? $var->{source}->dbID : $var->{_source_id},
         $var->name,
         $var->{flipped},
-        $var->{class_attrib_id} || $var->adaptor->db->get_AttributeAdaptor->attrib_id_for_type_value('SO_term', $var->{class_SO_term}) || 18,
+        $var->{class_attrib_id} || ( $var->{class_SO_term} && $var->adaptor->db->get_AttributeAdaptor->attrib_id_for_type_value('SO_term', $var->{class_SO_term}) ) || 18,
         $var->is_somatic,
         $var->minor_allele,
         $var->minor_allele_frequency,
         $var->minor_allele_count,
-        join(",",@{$var->{clinical_significance}}) || undef,
-        join(",",@{$var->{evidence_attribs}}) || undef,   ### HERE
+        $var->{clinical_significance} ? join(",",@{$var->{clinical_significance}}) : undef,
+        $var->{evidence_attribs} ? join(",", @{$var->{evidence_attribs}}) : undef,
         $var->dbID
     );
     

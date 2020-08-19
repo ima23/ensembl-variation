@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,6 +68,17 @@ sub run {
     . "AND sr.seq_region_id = sra.seq_region_id; ";
   $vdba->dbc()->sql_helper()->execute_update(-SQL => $sql, -PARAMS => [] );
 
+  if (!$self->param('skip_patch_comparison')) {
+    my $patches_newasm = $self->get_patches($registry);
+    $registry->load_all($self->param('registry_file_oldasm'));
+    my $patches_oldasm = $self->get_patches($registry);
+    foreach my $patch (keys %{$patches_newasm}) {
+      if (! $patches_oldasm->{$patch}) {
+        die "Patch $patch is missing from old variation database. Both variation databases need to contain the same patches.\n";
+      }
+    }
+  }
+
   my $pipeline_dir = $self->param('pipeline_dir');
   die "$pipeline_dir doesn't exist" unless (-d $pipeline_dir);		
 
@@ -91,8 +102,8 @@ sub run {
     can_run($self->param($tool)) or die "$tool could not be found at location: ", $self->param($tool);
   }
 
-  foreach my $file (qw/ensembl_regsitry_oldasm ensembl_regsitry_newasm/) {
-    "File $file is missing " if (! -f $self->param($file));
+  foreach my $file (qw/registry_file_oldasm registry_file_newasm/) {
+    die("File $file is missing " . $self->param($file) . "\n") if (! -f $self->param($file));
   }
 
   my @folders = qw/bam_files_dir filtered_mappings_dir load_features_dir mapping_results_dir statistics_dir dump_mapped_features_dir/;
@@ -131,6 +142,21 @@ sub run {
       $self->run_cmd("rm -f $dir/*.fai");
     }
   }
+}
+
+sub get_patches {
+  my $self = shift;
+  my $registry = shift;
+  my $vdba = $registry->get_DBAdaptor($self->param('species'), 'variation');
+  my $dbh = $vdba->dbc->db_handle;
+  my $sth = $dbh->prepare(qq{SELECT meta_value from meta where meta_key='patch';});
+  my $patches = {};
+  $sth->execute();
+  while (my $row = $sth->fetchrow_arrayref) {
+    $patches->{$row->[0]} = 1;
+  }
+  $sth->finish();
+  return $patches;
 }
 
 sub write_output {

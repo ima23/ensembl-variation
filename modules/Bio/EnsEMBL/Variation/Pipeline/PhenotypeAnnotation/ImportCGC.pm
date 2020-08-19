@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,9 +57,6 @@ sub fetch_input {
   my $species      = $self->required_param('species');
 
   $self->debug($self->param('debug_mode'));
-  $self->core_db_adaptor($self->get_species_adaptor('core'));
-  $self->variation_db_adaptor($self->get_species_adaptor('variation'));
-  $self->ontology_db_adaptor($self->get_adaptor('multi', 'ontology'));
 
   %source_info = (source_description => 'Catalog of genes of which mutations have been causally implicated in cancer',
                   source_url => 'https://cancer.sanger.ac.uk/census',
@@ -67,7 +64,7 @@ sub fetch_input {
                   #source_version  will be set based on the date in the file name (year/month-> yyyymm)
                   source_status => 'somatic',
                   source_name => 'Cancer Gene Census',     #source name in the variation db
-                  source_name_short => 'CancerGeneCensus', #source identifier in the pipeline
+                  source_name_short => 'CGC', #source identifier in the pipeline
                   data_types => 'phenotype_feature,study',
                   );
 

@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,5 +60,11 @@ ok($aa->display_term_for_SO_term($SO_term) eq $display_term,           'Display 
 ok($aa->SO_accession_for_SO_term($SO_term) eq $SO_accession,           'SO accession by SO term');
 ok($aa->SO_term_for_SO_accession($SO_accession) eq $SO_term,           'SO term by SO accession');
 ok($aa->display_term_for_SO_accession($SO_accession) eq $display_term, 'Display term by SO accession');
+
+# fetch all attribs of a type
+my $attrib_type = 'phenotype_type';
+my $attribs = $aa->attrib_values_for_attrib_type_code($attrib_type);
+ok(scalar keys %$attribs == 3, "count attribs of specific type");
+ok(defined($attribs->{trait}) && $attribs->{trait} == 665, "count attribs of specific type - check one attrib");
 
 done_testing();

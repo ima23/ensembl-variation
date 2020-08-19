@@ -2,7 +2,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ Bio::EnsEMBL::Variation::DBSQL::VariationFeatureAdaptor
     print $vf->seq_region_name(), $vf->seq_region_start(), '-',
           $vf->seq_region_end(), "\n";
   }
-  
+
 =head1 DESCRIPTION
 
 This adaptor provides database connectivity for VariationFeature objects.
@@ -454,6 +454,7 @@ sub fetch_all_somatic_by_Slice {
 }
 
 =head2 fetch_all_somatic_by_Slice_Source
+
   Arg [1]    : Bio::EnsEMBL::Slice $slice the slice from which to obtain features
   Arg [2]    : Bio::EnsEMBL::Variation::Source $source only return somatic mutations for the given source
   Example    : my $vfs = $vfa->fetch_all_somatic_by_Slice_Source($slice, $source);
@@ -462,6 +463,7 @@ sub fetch_all_somatic_by_Slice {
   Exceptions : throw on incorrect argument
   Caller     : Bio::EnsEMBL::Slice
   Status     : Stable
+
 =cut
 
 sub fetch_all_somatic_by_Slice_Source {
@@ -487,6 +489,7 @@ sub fetch_all_somatic_by_Slice_Source {
 
 
 =head2 fetch_all_by_Slice_Source
+
   Arg [1]    : Bio::EnsEMBL::Slice $slice the slice from which to obtain features
   Arg [2]    : Bio::EnsEMBL::Variation::Source $source only return variation features for the given source
   Example    : my $vfs = $vfa->fetch_all_by_Slice_Source($slice, $source);
@@ -495,6 +498,7 @@ sub fetch_all_somatic_by_Slice_Source {
   Exceptions : throw on incorrect argument
   Caller     : Bio::EnsEMBL::Slice
   Status     : Stable
+
 =cut
 
 sub fetch_all_by_Slice_Source {
@@ -1682,17 +1686,27 @@ sub _parse_hgvs_transcript_position {
     }
     # Convert the cDNA coordinates to genomic coordinates.
     my @coords = $tr_mapper->cdna2genomic($cds_start,$cds_end);
+
     if($DEBUG ==1){
       print "In parser: cdna2genomic coords: ". $coords[0]->start() . "-". $coords[0]->end() . " and strand ". $coords[0]->strand()." from $cds_start,$cds_end\n";}
     
     #Throw an error if we didn't get an unambiguous coordinate back
-    throw ("Unable to map the cDNA coordinates $start\-$end to genomic coordinates for Transcript " .$transcript->stable_id()) if (scalar(@coords) != 1 || !$coords[0]->isa('Bio::EnsEMBL::Mapper::Coordinate'));
-    
-    my  $strand = $coords[0]->strand();    
-    
-    ### overwrite exonic location with genomic coordinates
-    $start = $coords[0]->start(); 
-    $end   = $coords[0]->end();
+    throw ("Unable to map the cDNA coordinates $start\-$end to genomic coordinates for Transcript " .$transcript->stable_id()) if (!$coords[0]->isa('Bio::EnsEMBL::Mapper::Coordinate'));
+
+    my  $strand = $coords[0]->strand();
+
+    # Handle multi-exon location
+    if(scalar(@coords) != 1){
+      my $n_coord = scalar(@coords);
+
+      $start = $strand == 1 ? $coords[0]->start() : $coords[$n_coord-1]->start();
+      $end = $strand == 1 ? $coords[$n_coord-1]->end() : $coords[0]->end();
+    }
+    else{
+      ### overwrite exonic location with genomic coordinates
+      $start = $coords[0]->start();
+      $end   = $coords[0]->end();
+    }
 
     #### intronic variants are described as after or before the nearest exon 
     #### - add this offset to genomic start & end positions
@@ -1886,7 +1900,8 @@ sub fetch_by_hgvs_notation {
     if(!defined($transcript)) {
       # Seeing transcripts erroneously submitted with p. changes
       if($reference =~ /ENST/){
-         push @transcripts, $transcript_adaptor->fetch_by_stable_id($reference);
+         my $given_transcript = $transcript_adaptor->fetch_by_stable_id($reference);
+         push @transcripts, $given_transcript if defined $given_transcript;
       }
       # Fetch as UniProt ID or gene
       else {
@@ -2191,7 +2206,6 @@ sub _pick_likely_transcript {
 sub _parse_hgvs_protein_position{
 
   my ($description, $reference, $transcript ) = @_;
-
   ## only supporting the parsing of hgvs substitutions [eg. Met213Ile]
   my ($from, $pos, $to) = $description =~ /^(\w+?)(\d+)(\w+?|\*)$/; 
 
@@ -2215,15 +2229,13 @@ sub _parse_hgvs_protein_position{
   # check genomic codon is compatible with input HGVS
   my $check_prot   = $codon_table->translate($from_codon_ref);
 
-  my @from_codons;
+  my @from_codons = ();
   ## if the genomic sequence translates to match the input HGVS ref protein, use this
   if ($check_prot eq $from){
     push @from_codons, $from_codon_ref ;
   }
   else{
-    # rev-translate input ref sequence if the genome sequence does not match
-    print "Sequence translated from reference ($from_codon_ref -> $check_prot) does not match input sequence ($from)\n" if $DEBUG ==1;
-    @from_codons   = $codon_table->revtranslate($from);
+    throw("Sequence translated from reference ($from_codon_ref -> $check_prot) does not match input sequence ($from)");
   }
 
   # rev-translate alt sequence
@@ -2397,7 +2409,7 @@ sub fetch_by_dbID {
 =head2 fetch_all_by_location_identifier
 
   Arg [1]    : string $location_identifier
-  Example    : $vf = $adaptor->fetch_by_dbID('1:230710048:A_G');
+  Example    : $vf = $adaptor->fetch_all_by_location_identifier('1:230710048:A_G');
   Description: Fetches VariationFeatures by location identifier.
                Primarily used to fetch variants from VCFCollections
                as optional 4th component is source_name or
@@ -2470,7 +2482,7 @@ sub fetch_by_spdi_notation{
   )], @_);
 
   ########################### Check & split input ########################### 
-  my ($sequence_id, $position, $deleted_seq, $inserted_seq) = split /:/, $spdi; 
+  my ($sequence_id, $position, $deleted_seq, $inserted_seq) = split /:/, $spdi;
 
   # count number of elements   
   my $count_separator = () = $spdi =~ m/\:/g; 
@@ -2507,9 +2519,17 @@ sub fetch_by_spdi_notation{
   $start = $position + 1; 
   $strand = 1; ## strand should be genome strand for SPDI genomic notation
 
+  my ($highest_cs) = @{$self->db->get_CoordSystemAdaptor->fetch_all()};
+  my $coord_system = $highest_cs->name();
+
   # Get a slice adaptor to enable check of supplied reference allele
   my $slice_adaptor = $user_slice_adaptor || $self->db()->dnadb()->get_SliceAdaptor(); 
-  my $slice = $slice_adaptor->fetch_by_region('chromosome', $sequence_id ) || $slice_adaptor->fetch_by_region(undef, $sequence_id);  
+  # Use fetch_by_region(undef, $sequence_id) to fetch LRG and NT regions
+  my $slice = $slice_adaptor->fetch_by_region($coord_system, $sequence_id) || $slice_adaptor->fetch_by_region(undef, $sequence_id);
+
+  if(!ref($slice) || !$slice->isa('Bio::EnsEMBL::Slice')) {
+    throw("Sequence name $raw_sequence_id not valid");
+  }
 
   # First checks if deleted and inserted sequences are not 0 (invalid notation)  
   if($deleted_seq eq '0' && $inserted_seq eq '0'){
@@ -2529,14 +2549,14 @@ sub fetch_by_spdi_notation{
     if($check_deleted_seq_letters){
       $ref_allele = uc $deleted_seq;
       $end = $position + length($deleted_seq); 
-      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id);
+      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id, $coord_system);
 
       throw ("Reference allele extracted from $sequence_id:$start-$end ($refseq_allele) does not match reference allele given by SPDI notation $spdi ($ref_allele)") 
         unless ($ref_allele eq $refseq_allele);
     } 
     else{
       $end = $position + $deleted_seq;
-      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id);
+      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id, $coord_system);
     }   
     $alt_allele = '-';
   } 
@@ -2549,7 +2569,7 @@ sub fetch_by_spdi_notation{
       $ref_allele = uc $deleted_seq; 
       $end = ($check_deleted_seq_digit) ? $position : $position + length($deleted_seq); 
 
-      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id); 
+      my $refseq_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id, $coord_system);
       
       throw ("Reference allele extracted from $sequence_id:$start-$end ($refseq_allele) does not match reference allele given by SPDI notation $spdi ($ref_allele)")
         unless ($ref_allele eq $refseq_allele); 
@@ -2562,7 +2582,7 @@ sub fetch_by_spdi_notation{
         unless ($inserted_seq_length == $deleted_seq);
  
       $end = $position + $deleted_seq; 
-      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id); # get the correct reference allele  
+      $ref_allele = get_reference_allele($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id, $coord_system); # get the correct reference allele
     } 
 
     $alt_allele = uc $inserted_seq; 
@@ -2587,10 +2607,10 @@ sub fetch_by_spdi_notation{
 
 # Get the reference allele for the genomic position 
 sub get_reference_allele{ 
-  my ($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id) = @_;
+  my ($slice_adaptor, $sequence_id, $start, $end, $raw_sequence_id, $coord_system) = @_;
 
   # get a slice for the variant genomic coordinate 
-  my $slice = $slice_adaptor->fetch_by_region('chromosome',$sequence_id,$start,$end);
+  my $slice = $slice_adaptor->fetch_by_region($coord_system,$sequence_id,$start,$end) || $slice_adaptor->fetch_by_region(undef,$sequence_id,$start,$end);
 
   if(!ref($slice) || !$slice->isa('Bio::EnsEMBL::Slice')) {
     throw("Sequence name $raw_sequence_id not valid"); 

@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ sub new {
 
   my $self = $class->SUPER::new(@_);
 
-  if (! grep {$_ eq $self->annotation_file_version} ('3.5a', '4.0a')) {
+  if (! grep {$_ eq $self->annotation_file_version} ('3.5a', '4.0a', '4.1a')) {
     die "dbNSFP version " . $self->annotation_file_version . " is not supported.";
   }
 

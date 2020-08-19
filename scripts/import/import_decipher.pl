@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -86,6 +86,11 @@ my $clin_sign_types = get_attrib_list($cs_attr_type_id);
 my $inheritance_attrib_type = 'inheritance_type';
 my $stmt = qq{ SELECT attrib_type_id FROM attrib_type WHERE code='$inheritance_attrib_type'};
 my $inheritance_attrib_type_id = ($dbVar->selectall_arrayref($stmt))->[0][0];
+
+# Phenotype class attrib id
+my $phenotype_attrib = 'trait';
+my $stmt = qq{ SELECT attrib_id FROM attrib WHERE value='$phenotype_attrib'};
+my $phenotype_attrib_id = ($dbVar->selectall_arrayref($stmt))->[0][0];
 
 
 # run the mapping sub-routine if the data needs mapping
@@ -370,7 +375,7 @@ sub phenotype_feature {
     next if ($phenotype eq '');
     
     $phenotype =~ s/'/\\'/g;
-    $dbVar->do(qq{ INSERT IGNORE INTO phenotype (description) VALUES ('$phenotype')});  
+    $dbVar->do(qq{ INSERT IGNORE INTO phenotype (description, class_attrib_id) VALUES ('$phenotype', $phenotype_attrib_id)});
   }
     
   $stmt = qq{

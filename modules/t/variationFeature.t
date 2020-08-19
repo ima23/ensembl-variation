@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -374,12 +374,6 @@ ok($spdi_notation_12->{'TTTTTTTTTT'} eq 'NC_000013.10:76134860:TTTTTTTTT:TTTTTTT
 
 #test deprecated methods
 print "\n## Test deprecated methods ##\n";
-
-# test add consequence type
-my $oc2 = Bio::EnsEMBL::Variation::OverlapConsequence->new(-SO_term => 'synonymous_variant');
-ok($vf->add_consequence_type($oc2), "deprecated 'add_consequence_type'");
-# get consequence type
-ok($vf->get_consequence_type()->[0] eq $consequence->SO_term, "deprecated 'get_consequence_type'");
 
 # LD data
 # VCF
