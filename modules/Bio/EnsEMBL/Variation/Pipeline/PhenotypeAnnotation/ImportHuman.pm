@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,9 +54,11 @@ sub fetch_input {
 
     unless ($run_type eq NONE) {
       my %import_species = SPECIES;
-      $run_type = GWAS if $run_type eq HUMAN; #GWAS analysis will trigger all the subsequent ones
-      $self->param('output_ids',  [ map { {species => $_} } @{$import_species{$run_type}} ]);
-      $self->print_pipelogFH("Setting up for $run_type import: ". join(", ",@{$import_species{$run_type}}). "\n") if $self->param('debug_mode') ;
+      #if HUMAN runtype, then select species by looking up MIMMORBID species
+      # expectation is that MIMMORBID will always be only homo_sapiens
+      my $type = ($run_type eq HUMAN) ? 'MIMMORBID' : $run_type;
+      $self->param('output_ids',  [ map { {species => $_} } @{$import_species{$type}} ]);
+      $self->print_pipelogFH("Setting up for $type import: ". join(", ",@{$import_species{$type}}). "\n") if $self->param('debug_mode') ;
     }
 }
 

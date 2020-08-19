@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ use File::stat;
 use POSIX qw(strftime);
 use LWP::Simple;
 use HTTP::Tiny;
+use Data::Dumper;
 
 use base ('Bio::EnsEMBL::Variation::Pipeline::PhenotypeAnnotation::BasePhenotypeAnnotation');
 
@@ -83,7 +84,7 @@ my %species_synonyms = (
   'chimpanzee'  => 'pan_troglodytes',
   'chimp' => 'pan_troglodytes',
   'cow'  => 'bos_taurus',
-  'dog'  => 'canis_familiaris',
+  'dog'  => 'canis_lupus_familiaris',
   'gibbon' => 'nomascus_leucogenys',
   'goat'  => 'capra_hircus',
   'horse' => 'equus_caballus',
@@ -96,7 +97,7 @@ my %species_synonyms = (
   'rat' => 'rattus_norvegicus',
   'sheep'  => 'ovis_aries',
   'tetraodon' => 'tetraodon_nigroviridis',
-  'turkey'  => 'Meleagris_gallopavo',
+  'turkey'  => 'meleagris_gallopavo',
   'zebra_finch' => 'taeniopygia_guttata',
   'zebrafish' => 'danio_rerio'
 );
@@ -108,8 +109,6 @@ sub fetch_input {
   my $species      = $self->required_param('species');
 
   $self->debug($self->param('debug_mode'));
-  $self->core_db_adaptor($self->get_species_adaptor('core'));
-  $self->variation_db_adaptor($self->get_species_adaptor('variation'));
 
   my $omia_url = 'https://omia.org/curate/causal_mutations/?format=gene_table';
 
@@ -123,7 +122,11 @@ sub fetch_input {
                   );
 
   my $workdir_fetch = $pipeline_dir."/".$source_info{source_name_short};
-  make_path($workdir_fetch) or die "Failed to create $workdir_fetch $!\n";
+  unless (-d $workdir_fetch) {
+    my $err;
+    make_path($workdir_fetch, {error => \$err});
+    die "make_path failed: ".Dumper($err) if $err && @$err;
+  }
   my $file_omia = 'omia_gene_table.txt';
 
   my $workdir = $pipeline_dir."/".$source_info{source_name_short}."/".$species;
@@ -144,7 +147,7 @@ sub fetch_input {
 
   #get section specific for this species
   print $logFH "Found folder (".$workdir_fetch."/omia_split) and will skip new split\n" if -e $workdir_fetch."/omia_split";
-  split_omia($workdir_fetch,$file_omia) unless -e $workdir_fetch."/"."omia_split";
+  $self->split_omia($workdir_fetch,$file_omia) unless -e $workdir_fetch."/"."omia_split";
 
   my $org_path = $pipeline_dir."/".$source_info{source_name_short}."/omia_split/omia_".$species.".txt";
   my $new_link = $workdir."/omia_".$species.".txt";
@@ -200,6 +203,7 @@ sub write_output {
 =cut
 
 sub split_omia {
+  my $self = shift;
   my $workdir = shift;
   my $all_file = shift;
 
@@ -209,6 +213,7 @@ sub split_omia {
 
   my $prefix = 'omia_';
   my $suffix = '.txt';
+  make_path($workdir."/omia_split") or die "Failed to create $workdir/omia_split $!\n";
 
   my %data;
 
@@ -252,7 +257,6 @@ sub split_omia {
     $id =~ s/'//g;
     $id =~ s/^domestic_//g;
 
-    make_path($workdir."/omia_split") or die "Failed to create $workdir/omia_split $!\n";
     open(OUT, "> $workdir/omia_split/$prefix$id$suffix") || die $!;
     foreach my $line (@{$data{$taxo_id}}) {
       print OUT "$line\n";
@@ -260,6 +264,14 @@ sub split_omia {
     close(OUT);
   }
 
+  #sheep is exception where it stands for ovis_aries and ovis_aries_rambouillet
+  if (-e  "$workdir/omia_split/$prefix"."ovis_aries".$suffix) {
+    my $cmd = "cp -p $workdir/omia_split/$prefix"."ovis_aries$suffix $workdir/omia_split/$prefix"."ovis_aries_rambouillet$suffix";
+    my ($return_value, $stderr, $flat_cmd) = $self->run_system_command($cmd);
+    if ($return_value) {
+      die("there was an error running as ($flat_cmd: $stderr)");
+    }
+  }
 }
 
 

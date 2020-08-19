@@ -1,6 +1,6 @@
 =head1 LICENSE
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -57,6 +57,7 @@ sub default_options {
     qc_failure_reasons      => $self->o('pipeline_dir') . '/qc_failure_reasons',
     qc_mapped_features      => $self->o('pipeline_dir') . '/qc_mapped_features',
     qc_update_features      => $self->o('pipeline_dir') . '/qc_update_features',
+    hive_db_name            => $ENV{'USER'} . '_ehive_remapping_vf_' . $self->o('ensembl_release') . '_' . $self->o('assembly') . '_' . $self->o('species'),
   };
 }
 

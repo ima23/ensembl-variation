@@ -1,5 +1,5 @@
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ use FindBin qw($Bin);
 
 use Bio::EnsEMBL::Registry;
 use Bio::EnsEMBL::Variation::Population;
+use Bio::EnsEMBL::Variation::Phenotype;
 use Bio::EnsEMBL::Test::TestUtils;
 use Bio::EnsEMBL::Test::MultiTestDB;
 
@@ -40,6 +41,7 @@ ok($pa && $pa->isa('Bio::EnsEMBL::Variation::DBSQL::PhenotypeAdaptor'), "get phe
 
 my $p = $pa->fetch_by_dbID(1);
 ok($p && $p->name eq 'ACH', "fetch_by_dbID");
+ok($p->class_attrib eq 'trait', "fetch_by_dbID - class attrib");
 
 $p = $pa->fetch_by_description('ACHONDROPLASIA')->[0];
 ok($p && $p->name eq 'ACH', "fetch_by_description");
@@ -60,6 +62,7 @@ delete $p->{dbID};
 ok($pa->store($p), "store");
 $p = $pa->fetch_by_description('test')->[0];
 ok($p && $p->name eq 'test', "fetch stored");
+ok($p && $p->class_attrib_id == 665, "store - default class_attrib_id");
 
 
 ## check ontology accession handling
@@ -107,6 +110,19 @@ ok($p_by_OT->description() eq 'BRUGADA SYNDROME', "fetch by OntologyTerm synonym
 my $p_by_OT_type = $pa->fetch_by_OntologyTerm( $terms->[0], 'involves' );
 ok(scalar @{$p_by_OT_type} ==0, "fetch by OntologyTerm & mapping type");
 
+## check what are the phenotype classes
+my $pheno_classes = $pa->get_all_phenotype_class_types();
+ok(scalar $pheno_classes == 3, "get phenotype classes");
+
+## check create new phenotype and store
+$multi->hide('variation', 'phenotype');
+my $new_pheno = Bio::EnsEMBL::Variation::Phenotype->new(-description => "test_pheno_desc" );
+ok($new_pheno->class_attrib eq 'trait', "default class attrib - trait");
+ok(! defined $new_pheno->class_attrib_id , "default class attrib id - undef");
+$pa->store($new_pheno);
+my $class_attr_id = $new_pheno->class_attrib_id;
+ok(defined $class_attr_id && $class_attr_id eq '665', "class attrib id - 665(trait)");
+$multi->restore('variation', 'phenotype');
 
 done_testing();
 

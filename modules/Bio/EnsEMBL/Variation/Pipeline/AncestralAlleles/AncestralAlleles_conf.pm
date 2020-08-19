@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -77,6 +77,8 @@ sub default_options {
 
         reg_file                => $self->o('pipeline_dir') . '/ensembl.registry',
         batch_size => 1_000_000,
+        create_stats => 0,
+        none_dbSNP_only => 0,
         
         
         default_lsf_options => '-qproduction-rh74 -R"select[mem>2000] rusage[mem=2000]" -M2000',
@@ -91,7 +93,7 @@ sub default_options {
             -port   => $self->o('hive_db_port'),
             -user   => $self->o('hive_db_user'),
             -pass   => $self->o('hive_db_password'),            
-            -dbname => $ENV{'USER'}.'_'.$self->o('pipeline_name'),
+            -dbname => $ENV{'USER'} . '_ehive_' . $self->o('pipeline_name') . '_' . $self->o('ensembl_release'),
             -driver => 'mysql',
             -reconnect_when_lost => 1
         },
@@ -114,6 +116,9 @@ sub pipeline_analyses {
         pipeline_dir     => $self->o('pipeline_dir'),
         compara_dir      => $self->o('compara_dir'),
         batch_size       => $self->o('batch_size'),
+        create_stats     => $self->o('create_stats'),
+        none_dbSNP_only  => $self->o('none_dbSNP_only'),
+
     );
    
     my @analyses;

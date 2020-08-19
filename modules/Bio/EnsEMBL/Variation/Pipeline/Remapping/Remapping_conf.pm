@@ -1,6 +1,6 @@
 =head1 LICENSE
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -58,6 +58,7 @@ sub default_options {
         map_to_chrom_only       => 1,
         entries_per_file        => 200000,
         dump_multi_map          => 1,
+        skip_patch_comparison   => 0,
 
         bwa                     => 'bwa',
         samtools                => 'samtools',
@@ -83,7 +84,7 @@ sub default_options {
             -port   => $self->o('hive_db_port'),
             -user   => $self->o('hive_db_user'),
             -pass   => $self->o('hive_db_password'),            
-            -dbname => $ENV{'USER'} . '_' . $self->o('pipeline_name'),
+            -dbname => $self->o('hive_db_name'),
             -driver => 'mysql',
         },
     };

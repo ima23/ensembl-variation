@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,8 +55,6 @@ sub fetch_input {
   my $coord_file   = $self->required_param('coord_file');
 
   $self->debug($self->param('debug_mode'));
-  $self->core_db_adaptor($self->get_species_adaptor('core'));
-  $self->variation_db_adaptor($self->get_species_adaptor('variation'));
 
   %source_info = (source_description => 'Mouse Genome Informatics',
                   source_url => 'http://www.informatics.jax.org/',

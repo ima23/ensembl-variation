@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file excepst in compliance with the License.
@@ -347,6 +347,7 @@ sub _after_end {
 
 sub _upstream {
     my ($bvf, $feat, $dist) = @_;
+    $dist += get_max_shift_length($bvf);
     return $feat->strand == 1 ? 
         _before_start($bvf, $feat, $dist) : 
         _after_end($bvf, $feat, $dist);
@@ -690,6 +691,10 @@ sub _get_ref_pep {
     my ($bvfoa, $feat, $bvfo, $bvf) = @_;
     $bvfo ||= $bvfoa->base_variation_feature_overlap;
     my $ref_tva = $bvfo->get_reference_TranscriptVariationAllele;
+
+    ## The shift hash has to be added to the reference tva before calculating the relevant peptide string.
+    ## This is because we don't precalculate the shift_hash for reference tvas for speed and for
+    ## variants with multiple alternate alleles with potentially different shift lengths.
     $ref_tva->{shift_hash} = $bvfoa->{shift_hash} if (defined($bvfoa->{shift_hash}));
     return $ref_tva->peptide;
 }

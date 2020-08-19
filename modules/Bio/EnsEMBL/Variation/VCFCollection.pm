@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1252,9 +1252,11 @@ sub _get_vcf_by_chr {
         delete $self->{files}->{$close};
       }
     
-      $self->{files}->{$chr} = $self->_vcf_parser_obj($file);
-
-      push @{$self->{_open_files}}, $chr;
+      my $vcf_obj = $self->_vcf_parser_obj($file);
+      if(defined $vcf_obj) {
+        $self->{files}->{$chr} = $vcf_obj;
+        push @{$self->{_open_files}}, $chr;
+      }
     }
   }
   
@@ -1277,7 +1279,7 @@ sub _vcf_parser_obj {
 
   # open obect (remote indexes get downloaded)
   my $obj = undef;
-  eval { $obj = Bio::EnsEMBL::IO::Parser::VCF4Tabix->open($file); }; warn $@ if $@;
+  eval { $obj = Bio::EnsEMBL::IO::Parser::VCF4Tabix->open($file); }; warn "$file: $@" if $@;
   # change back
   chdir($cwd);
 

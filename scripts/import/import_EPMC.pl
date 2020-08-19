@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 # Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-# Copyright [2016-2019] EMBL-European Bioinformatics Institute
+# Copyright [2016-2020] EMBL-European Bioinformatics Institute
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 
 ## script to read data export from Europe PMC & UCSC and import as variation_citations
+## the script also imports citations from phenotype tables (phenotype_feature and phenotype_feature_attrib) only for human
 
 use strict;
 use warnings;
@@ -31,10 +32,11 @@ use Bio::EnsEMBL::Variation::DBSQL::PhenotypeAdaptor;
 use Bio::EnsEMBL::Variation::DBSQL::VariationAdaptor;
 use Bio::EnsEMBL::Variation::Utils::QCUtils qw(count_rows);
 use Bio::EnsEMBL::Variation::Utils::Date qw( run_date log_time);
+use Bio::EnsEMBL::Variation::Utils::SpecialChar qw(replace_hex);
 
 our $DEBUG = 0;
 
-my ($registry_file, $data_file, $species, $check_dbSNP, $clean, $type, $do_disease, $no_evidence);
+my ($registry_file, $data_file, $species, $check_dbSNP, $clean, $type, $no_evidence);
 
 GetOptions ("data=s"        => \$data_file,
             "type=s"        => \$type,
@@ -46,8 +48,7 @@ GetOptions ("data=s"        => \$data_file,
     );
 
 ## an export file is needed for EPMC data
-usage() unless defined $registry_file && defined $type && defined  $species && (defined $data_file || $type eq "UCSC" || $type eq "disease") ;
-
+usage() unless defined $registry_file && defined $type && defined  $species && (defined $data_file || $type eq "UCSC" || $type eq "phenotype");
 
 my $http = HTTP::Tiny->new();
 
@@ -68,6 +69,12 @@ my %check_species = ("bos_taurus"      =>   [ "bos taurus",   "cow",   "bovine",
 our $species_string = join "|", @{$check_species{$species}} if defined $check_species{$species};
 print "Checking species $species_string\n";
 
+# phenotype option is only available for human
+# print error message
+if($type eq 'phenotype' && $species_string !~/human|homo/) {
+  die "Type $type is only available for human\n";
+}
+
 my $reg = 'Bio::EnsEMBL::Registry';
 $reg->no_version_check(1); 
 $reg->load_all($registry_file);
@@ -75,8 +82,6 @@ $reg->load_all($registry_file);
 my $dba = $reg->get_DBAdaptor($species, 'variation') || die "Error getting db adaptor\n";
 ## extract all variants - cited variants failing QC are still displayed
 $dba->include_failed_variations(1);
-our $pheno_adaptor = $reg->get_adaptor($species, 'variation', 'phenotype');
-
 
 ## if new dbSNP release has been imported, pull out full info for citations
 my $dbSNP_data = check_dbSNP($dba) unless defined $check_dbSNP && $check_dbSNP ==0;
@@ -95,8 +100,6 @@ if( $type eq "EPMC"){
     ##import any new publications & citations
     import_citations($reg, $file_data, $type);
 
-    ## update variations & variation_features to have Cited status
-    ## update_evidence($dba) unless defined $no_evidence;
 }
 elsif($type eq "UCSC"){
 
@@ -109,32 +112,42 @@ elsif($type eq "UCSC"){
     ##import any new publications & citations
     import_citations($reg, $file_data, $type);
 
-    ## update variations & variation_features to have Cited status
-    ## update_evidence($dba) unless defined $no_evidence;
-
 }
+elsif($type eq "phenotype"){
 
-elsif($type eq "disease"){
-    ## look for phenotype citations in EPMC for all current publications
-    do_disease($reg);
+  print STDERR "Publications from Phenotype feature table:\n";
+
+  my $var_ad = $reg->get_adaptor($species, 'variation', 'variation');
+  my $pub_ad = $reg->get_adaptor($species, 'variation', 'publication');
+  my $source_ad = $reg->get_adaptor($species, 'variation', 'source');
+
+  # Fetch all citation source attribs
+  my $citation_attribs = get_citation_attribs($dba);
+
+  my $citations_pheno_feature = process_phenotype_feature($dba, $source_ad, $citation_attribs);
+  import_citations($reg, $citations_pheno_feature, $type);
+
+  my $citations_pheno_feature_attrib = process_phenotype_feature_attrib($dba, $source_ad, $citation_attribs);
+  import_citations($reg, $citations_pheno_feature_attrib, $type);
+
+  check_outdated_citations($dba, $var_ad, $pub_ad, $citation_attribs, $citations_pheno_feature, $citations_pheno_feature_attrib);
 }
-
 else{
-    die "Type $type is not recognised - must be EPMC or UCSC\n";
-} 
+    die "Type $type is not recognised - must be EPMC, UCSC or phenotype\n";
+}
 
-## create report on curent status
+# create report on curent status
 my $title_null = report_summary($dba, $species);
 
-## add run date to meta table
-update_meta($dba, $type);
+# add run date to meta table
+update_meta($dba, $type) unless $type eq "phenotype";
 
-## clean publications after import
+# clean publications after import
 if(defined $clean && $clean == 1){
   clean_publications($dba, $title_null);
 }
 
-## update variations & variation_features to have Cited status
+# update variations & variation_features to have Cited status
 update_evidence($dba) unless defined $no_evidence;
 
 sub import_citations{
@@ -153,6 +166,9 @@ sub import_citations{
     elsif($type eq "UCSC"){
       print $not_found "rsID\tPMID\tDOI\tTitle\tAuthors\tYear\tUCSC\n";
     }
+    elsif($type eq "phenotype"){
+      print $not_found "rsID,PMID\n";
+    }
 
     my $var_ad = $reg->get_adaptor($species, 'variation', 'variation');
     my $pub_ad = $reg->get_adaptor($species, 'variation', 'publication');
@@ -161,8 +177,8 @@ sub import_citations{
     my $dba = $reg->get_DBAdaptor($species, 'variation') || die "Error getting db adaptor\n";
     my $done_list = get_current_citations($dba);
 
-    # Get attrib id for source
-    my $source_attrib_id = get_source_attrib_id($reg, $type);
+    # Get attrib id for source EPMC and UCSC
+    my $source_attrib_id = get_source_attrib_id($reg, $type) unless ($type eq 'phenotype');
 
     foreach my $pub(keys %$data){
 
@@ -173,6 +189,7 @@ sub import_citations{
 
         foreach my $rsid ( @var_id ){
             my $pub_pmid = $data->{$pub}->{pmid};
+            $source_attrib_id = $data->{$pub}->{source} if($type eq 'phenotype');
 
             my $v = $var_ad->fetch_by_name($rsid);
             if (defined $v){
@@ -193,7 +210,10 @@ sub import_citations{
                 }
                 elsif($type eq "UCSC") {
                   print $not_found $rsid ."\t". $pub_pmid."\t-\t". $data->{$pub}->{doi} ."\t". $data->{$pub}->{title}."\t". $data->{$pub}->{authors} ."\t". $data->{$pub}->{year} ."\t".  $data->{$pub}->{ucsc} . "\n";
-               }
+                }
+                elsif($type eq "phenotype") {
+                  print $not_found "$rsid,$pub_pmid\n";
+                }
                use warnings ;
             }
         }
@@ -209,7 +229,11 @@ sub import_citations{
         
         my $title = (defined $ref->{resultList}->{result}->{title} ? $ref->{resultList}->{result}->{title}  : $data->{$pub}->{title});
         next unless defined $title;
-        next if ($title =~/Erratum/i || $title =~/Errata/i || $title =~/Not Available/i);
+
+        # Publications with invalid titles are skipped
+        # UCSC imports publications where title is not valid, example: 'P1-200'
+        next if ($title =~/Erratum/i || $title =~/Errata/i || $title =~/Not Available/i || $title =~/^P[0-9]+\-[0-9]+$/i);
+
         # Delete brackets from title, e.g. [title].
         if($title =~ /^\[ ?[A-Za-z]{2}/){
           $title =~ s/^\[//;
@@ -349,7 +373,6 @@ sub get_epmc_data{
 
 ## check if species is available in mined information
 ## essential for non-humans
-
 sub check_species{
 
     my ($mined ,$data)=@_ ;
@@ -670,7 +693,16 @@ sub clean_publications{
     my $title_cr_sth = $dba->dbc->prepare(qq[ select publication_id, title from publication where title like '%\n%' ]);
     my $authors_cr_sth = $dba->dbc->prepare(qq[ select publication_id, authors from publication where authors like '%\n%' ]);
 
-    my $wrong_title_sth = $dba->dbc->prepare(qq[ select publication_id, title from publication where title like '%Errata%' or title like '%Erratum%' or title like '%In This Issue%' or title like '%Oral abstracts%' or title like '%Oral Presentations%' or title like '%Proffered paper%' or title like '%Subject Index%' or title like '%Summaries of Key Journal Articles%' or title like '%This Month in The Journal%' or title like 'Index%' or title like '%Table of Contents%' or title like '%Not Available%' or title like 'Beyond Our Pages%' or title like 'EP News%' or title like 'ACTS Abstracts%' or title like 'Poster %' ]);
+    my $title_hex_char_sth = $dba->dbc->prepare(qq[ select publication_id, title from publication where title like '%&#x%' ]);
+    my $authors_hex_char_sth = $dba->dbc->prepare(qq[ select publication_id, authors from publication where authors like '%&#x%' ]);
+
+    my $wrong_title_sth = $dba->dbc->prepare(qq[ select publication_id, title from publication where title like '%Errata%'
+                   or title like '%Erratum%' or title like '%In This Issue%' or title like '%Oral abstracts%' 
+                   or title like '%Oral Presentations%' or title like '%Proffered paper%' or title like '%Subject Index%' 
+                   or title like '%Summaries of Key Journal Articles%' or title like '%This Month in The Journal%' 
+                   or title like 'Index%' or title like '%Table of Contents%' or title like '%Not Available%' 
+                   or title like 'Beyond Our Pages%' or title like 'EP News%' or title like 'ACTS Abstracts%' 
+                   or title like 'Poster %' or title like 'Abstracts.%' or title like 'Abstract.%' ]);
 
     my $empty_sth = $dba->dbc->prepare(qq[ select publication_id, title from publication where (authors = '' or authors is null) and pmid is null and pmcid is null ]);
 
@@ -684,6 +716,14 @@ sub clean_publications{
     $authors_cr_sth->execute()||die;
     my $get_authors_cr = $authors_cr_sth->fetchall_arrayref();
     my $authors_cr = $get_authors_cr->[0]->[0];
+
+    $title_hex_char_sth->execute()||die;
+    my $get_title_hex_char = $title_hex_char_sth->fetchall_arrayref();
+    my $title_hex_char = $get_title_hex_char->[0]->[0];
+
+    $authors_hex_char_sth->execute()||die;
+    my $get_authors_hex_char = $authors_hex_char_sth->fetchall_arrayref();
+    my $authors_hex_char = $get_authors_hex_char->[0]->[0];
 
     $wrong_title_sth->execute()||die;
     my $wrong_title = $wrong_title_sth->fetchall_arrayref();
@@ -733,6 +773,48 @@ sub clean_publications{
         
         my $clean_authors_sth = $dba->dbc()->prepare(qq[ update publication set authors = ? where publication_id = $pub_id ]);
         $clean_authors_sth->execute($authors);
+      }
+    }
+
+    # Replace hexadecimal characters in title
+    if (defined $title_hex_char){
+      print $report "\nPublications with hexadecimal characters in the title - clean:\n";
+      foreach my $t_hex_char (@{$get_title_hex_char}){
+        my $pub_id = $t_hex_char->[0];
+        my $title = $t_hex_char->[1];
+        my $new_title = replace_hex($title);
+
+        # Double check if title still contains hexadecimal characters
+        if($new_title =~ /&#x/) {
+          print $report "$pub_id\t$title\tWARNING: Title with hexadecimal characters\n";
+        }
+        # Continue update if title string is clean
+        else {
+          print $report "$pub_id\t$title\n";
+          my $clean_title_sth = $dba->dbc()->prepare(qq[ update publication set title = ? where publication_id = $pub_id ]);
+          $clean_title_sth->execute($new_title);
+        }
+      }
+    }
+
+    # Replace hexadecimal characters in authors
+    if (defined $authors_hex_char){
+      print $report "\nPublications with hexadecimal characters in the authors - clean:\n";
+      foreach my $a_hex_char (@{$get_authors_hex_char}){
+        my $pub_id = $a_hex_char->[0];
+        my $authors = $a_hex_char->[1];
+        my $new_authors = replace_hex($authors);
+
+        # Double check if authors still contain hexadecimal characters
+        if($new_authors =~ /&#x/) {
+          print $report "$pub_id\t$authors\tWARNING: Authors with hexadecimal characters\n";
+        }
+        # Continue update if authors string is clean
+        else {
+          print $report "$pub_id\t$authors\n";
+          my $clean_authors_sth = $dba->dbc()->prepare(qq[ update publication set authors = ? where publication_id = $pub_id ]);
+          $clean_authors_sth->execute($new_authors);
+        }
       }
     }
 
@@ -802,7 +884,7 @@ sub remove_publications{
         if(defined $failed_variant){
 
           # Check if there is other publications for variant 
-          my $other_publications_sth = $dba->dbc->prepare(qq[ select variation_id,publication_id from variation_citation where variation_id = $var_id ]);          
+          my $other_publications_sth = $dba->dbc->prepare(qq[ select variation_id,publication_id from variation_citation where variation_id = $var_id ]);
           $other_publications_sth->execute()||die;
           my $other_publications = $other_publications_sth->fetchall_arrayref();
           next unless (!defined $other_publications->[0]->[0]); 
@@ -917,149 +999,6 @@ sub parse_UCSC_file{
 
     return \%data;
 }
- 
-
-sub do_disease{
-
-    my $reg = shift;
-
-    my $dba = $reg->get_DBAdaptor($species, 'variation') || die "Error getting db adaptor\n";
-   # my $pheno_adaptor = $reg->get_adaptor($species, 'variation', 'phenotype');
-
-
-    my $phencit_ins_sth = $dba->dbc()->prepare(qq[ insert into phenotype_citation ( publication_id, phenotype_id ) values ( ?, ?) ]);
-    my $phencit_ext_sth = $dba->dbc()->prepare(qq[ select publication_id from phenotype_citation where publication_id = ? and  phenotype_id = ? ]);
-
-
-    my $pheno_ext_sth = $dba->dbc()->prepare(qq[ select phenotype_id, description from phenotype]);
-
-
-    my $pub_ext_sth = $dba->dbc()->prepare(qq[ select pmid, publication_id
-                                               from publication 
-                                               where publication_id not in 
-                                              (select publication_id from phenotype_citation)
-                                               and pmid is not null
-                                             ]);
-
-    my %pheno_ids;
-    $pheno_ext_sth->execute()||die;
-    my $curr_pheno = $pheno_ext_sth->fetchall_arrayref();
-    foreach my $l (@{$curr_pheno}){
-        $pheno_ids{"\U$l->[1]"} = $l->[0];
-    }
-
-
-    $pub_ext_sth->execute()||die;
-    my $dat =  $pub_ext_sth->fetchall_arrayref();
-
-    foreach my $l (@{$dat}){
-        #warn "looking for disease for $l->[0]\n";
-        ## extract disease info
-
-=head  This bit does one disease only
-        my $top_disease = find_disease($l->[0]);
-        ## skip paper if none found
-        next unless defined $top_disease
-
-=cut
-        my $multi_disease = find_disease($l->[0]);
-        ## skip paper if none found
-        next unless defined $multi_disease->[0];
-        foreach my $top_disease(@{$multi_disease}){
-            $top_disease =~ s/\'//g;
-            $top_disease = "\U$top_disease";
-            #warn "looking for/adding $top_disease\n";
-            
-            if(defined  $pheno_ids{$top_disease}){
-                
-                $phencit_ext_sth->execute( $l->[1], $pheno_ids{$top_disease} )||die;
-                my $already_done = $phencit_ext_sth->fetchall_arrayref();
-                
-                unless(defined $already_done ->[0]->[0]){
-                    ## create phenotype citation
-                    $phencit_ins_sth->execute($l->[1], $pheno_ids{$top_disease} )||die;
-                }
-            }
-            else{
-            ## enter if new phenotype - warn for quick rubbish scanning
-                #warn "Entering new phenotype  $top_disease\n";
-                my $pheno = Bio::EnsEMBL::Variation::Phenotype->new(-DESCRIPTION => $top_disease);
-                $pheno_adaptor->store($pheno );
-                $pheno_ids{$top_disease} =  $pheno->dbID() ;
-                ## create phenotype citation
-                $phencit_ins_sth->execute($l->[1], $pheno_ids{$top_disease})||die;
-            }
-        }
-    }
-}
-
-sub find_disease{
-
-    my $pmid = shift;
-
-    my %count;
-    my @diesase;
-
-    my $mined = get_epmc_data( "MED/$pmid/textMinedTerms/DISEASE" );
-    if( ref($mined->{semanticTypeList}->{semanticType}->{tmSummary}) eq 'ARRAY' ){
-        foreach my $found ( @{$mined->{semanticTypeList}->{semanticType}->{tmSummary}} ){
-            next if $found->{count} < 2;
-            push @diesase, $found->{term};
-
-        }
-
-
-
-    }
-    else{
-        ## if there is only one disease found, return it unless it is only mentioned once
-        return undef if $mined->{semanticTypeList}->{semanticType}->{tmSummary}->{count} < 2;
-        push @diesase, $mined->{semanticTypeList}->{semanticType}->{tmSummary}->{term};
-
-    }
-    return \@diesase;
-    
-}
-
-
-sub find_disease_max{
-
-    my $pmid = shift;
-
-    my %count;
-    my @diesase;
-
-    my $mined = get_epmc_data( "MED/$pmid/textMinedTerms/DISEASE" );
-    if( ref($mined->{semanticTypeList}->{semanticType}->{tmSummary}) eq 'ARRAY' ){
-        foreach my $found (@{$mined->{semanticTypeList}->{semanticType}->{tmSummary}}  ){
-            next if $found->{count} < 2;
-            $count{ $found->{term}} = $found->{count} ;
-        }
-        
-        my $max = 0;
-        ## find highest number of disease mentions in publication
-        foreach my $disease (keys %count){
-            $max = $count{$disease} if $max < $count{$disease};     
-        }
-
-        ## store diseases reaching this threshhold
-        foreach my $disease (keys %count){
-            push @diesase, $disease if $max == $count{$disease};
-
-        }
-        return undef if scalar(@diesase) >1 ; ## give up - not specific enough
-        return $diesase[0];
-
-    }
-    else{
-        ## if there is only one disease found, return it unless it is only mentioned once
-        return undef if $mined->{semanticTypeList}->{semanticType}->{tmSummary}->{count} < 2;
-        return $mined->{semanticTypeList}->{semanticType}->{tmSummary}->{term};
-
-    }
-
-
-}
 
 ## find current citation in db
 ## and skip these lines in the file.
@@ -1084,9 +1023,215 @@ sub get_current_citations{
     return \%citations;
 }
 
+###
+# Get citations from phenotype tables
+
+sub process_phenotype_feature {
+  my $dba = shift;
+  my $source_ad = shift;
+  my $citation_attribs = shift;
+
+  my %list_citations_pheno_feature;
+
+  ## Get citations from phenotype_feature
+  my $pheno_citations_sth = $dba->dbc()->prepare(qq[ select s.study_id, s.source_id, s.external_reference, s.study_type, p.object_id
+                                                from study s
+                                                inner join phenotype_feature p on s.study_id = p.study_id
+                                                where p.type = 'variation' and p.study_id is not null and s.external_reference is not null
+                                                group by s.study_id, s.source_id, s.external_reference, s.study_type, p.object_id ]);
+  $pheno_citations_sth->execute()||die;
+  my $data = $pheno_citations_sth->fetchall_arrayref();
+
+  my %source_id_list;
+
+  foreach my $pheno_data (@{$data}){
+    my $source_id = $pheno_data->[1];
+    my $study_type = $pheno_data->[3];
+
+    next if(defined $study_type);
+
+    if(!defined $source_id_list{$source_id}) {
+      my $source_obj = $source_ad->fetch_by_dbID($source_id);
+      my $source_name = $source_obj->name();
+
+      my $source_attrib_id = $citation_attribs->{$source_name};
+      die "No attrib of type 'citation_source' was found for '$source_name'!\n" unless defined $source_attrib_id;
+
+      $source_id_list{$source_id} = $source_attrib_id;
+    }
+  }
+
+  foreach my $l (@{$data}){
+    my $study_id = $l->[0];
+    my $source_id = $l->[1];
+    my $external_reference = $l->[2];
+    $external_reference =~ s/PMID://;
+    my $study_type = $l->[3];
+    my $rsid = $l->[4];
+
+    # Get attrib id for source - some are null 
+    my $source_attrib_id;
+    if(defined $study_type){
+      $source_attrib_id = $citation_attribs->{$study_type};
+      die "No attrib of type 'citation_source' was found for '$study_type'!\n" unless defined $source_attrib_id;
+    }
+    else{
+      # Get source name from source table (dbGaP)
+      $source_attrib_id = $source_id_list{$source_id};
+    }
+
+    my $tag = $source_attrib_id . "_" . $external_reference;
+
+    $list_citations_pheno_feature{$tag}{pmid} = $external_reference;
+
+    $list_citations_pheno_feature{$tag}{pmcid} = undef;
+    push @{$list_citations_pheno_feature{$tag}{rsid}}, $rsid;
+
+    $list_citations_pheno_feature{$tag}{source} = $source_attrib_id;
+  }
+
+  return \%list_citations_pheno_feature;
+}
+
+sub process_phenotype_feature_attrib {
+  my $dba = shift;
+  my $source_ad = shift;
+  my $citation_attribs = shift;
+
+  my %list_citations_pheno_feature_attrib;
+
+  my $pheno_feature_sth = $dba->dbc()->prepare(qq[ select pfa.phenotype_feature_id, pfa.value, pf.source_id, pf.object_id
+                                                   from phenotype_feature_attrib pfa
+                                                   inner join phenotype_feature pf on pfa.phenotype_feature_id = pf.phenotype_feature_id
+                                                   join attrib_type att on pfa.attrib_type_id = att.attrib_type_id
+                                                   where att.code = 'pubmed_id' ]);
+
+  $pheno_feature_sth->execute()||die;
+  my $pheno_feature_data = $pheno_feature_sth->fetchall_arrayref();
+
+  my %source_id_list;
+
+  foreach my $pheno_feat_data (@{$pheno_feature_data}){
+    my $source_id = $pheno_feat_data->[2];
+
+    if(!defined $source_id_list{$source_id}) {
+      my $source_obj = $source_ad->fetch_by_dbID($source_id);
+      my $source_name = $source_obj->name();
+      my $source_attrib_id = $citation_attribs->{$source_name};
+      die "No attrib of type 'citation_source' was found for '$source_name'!\n" unless defined $source_attrib_id;
+
+      $source_id_list{$source_id} = $source_attrib_id;
+    }
+  }
+
+  # Create map to associate PMID with all phenotype features it's linked to
+  foreach my $pheno_feat_data (@{$pheno_feature_data}){
+    # my $pheno_feat_id = $pheno_feat_data->[0];
+    my $value_pubid = $pheno_feat_data->[1];
+    my $source_id = $pheno_feat_data->[2];
+    my $var_name = $pheno_feat_data->[3];
+
+    my @value_pubid_splited = split /,/, $value_pubid;
+
+    # Get publication with same PMID from study table
+    foreach my $pmid (@value_pubid_splited){
+      # PMID=25806920 is the same paper as PMID=25806919
+      # PMID=25806919 is already in the publication table - faster to skip this PMID and avoid duplicated data
+      next if $pmid eq '25806920';
+
+      # Get source name from source table (ClinVar)
+      my $source_attrib_id = $source_id_list{$source_id};
+
+      my $tag = $source_attrib_id . "_" . $pmid;
+
+      $list_citations_pheno_feature_attrib{$tag}{pmid} = $pmid;
+
+      $list_citations_pheno_feature_attrib{$tag}{pmcid} = undef;
+      push @{$list_citations_pheno_feature_attrib{$tag}{rsid}}, $var_name;
+
+     $list_citations_pheno_feature_attrib{$tag}{source} = $source_attrib_id;
+    }
+  }
+
+  return \%list_citations_pheno_feature_attrib;
+}
+
+# The citations imported from the Phenotype tables (phenotype_feature and phenotype_feature_attrib) could be removed from the phenotype import in the future.
+# To avoid having outdated citations we check if all citations from the 3 sources (ClinVar, GWAS and dbGaP) are still in the Phenotype tables.
+sub check_outdated_citations {
+  my $dba = shift;
+  my $var_ad = shift;
+  my $pub_ad = shift;
+  my $citation_attribs = shift;
+  my $citations_pheno_feature = shift;
+  my $citations_pheno_feature_attrib = shift;
+
+  open (my $wrt, ">Outdated_Phenotype_citations_$species\_"  . log_time() . ".txt") or die "Failed to open file to write: $!\n";
+  print $wrt "RSID\tPMID\tSource\n";
+
+  # get all citations from the sources 'ClinVar', 'dbGaP' and 'GWAS' - imported from the phenotype tables
+  my $attrib_id_clinvar = $citation_attribs->{'ClinVar'};
+  my $attrib_id_gwas = $citation_attribs->{'GWAS'};
+  my $attrib_id_dbgap = $citation_attribs->{'dbGaP'};
+
+  my $citations_sth = $dba->dbc()->prepare(qq[ select variation_id, publication_id, data_source_attrib
+                                               from variation_citation
+                                               where data_source_attrib like '%$attrib_id_clinvar%' or data_source_attrib like '%$attrib_id_gwas%' or data_source_attrib like '%$attrib_id_dbgap%' ]);
+
+  $citations_sth->execute()||die;
+  my $citations_data = $citations_sth->fetchall_arrayref();
+
+  foreach my $c (@{$citations_data}){
+    my $variation_id = $c->[0];
+    my $publication_id = $c->[1];
+    my $attrib_id = $c->[2];
+
+    my $variation = $var_ad->fetch_by_dbID($variation_id);
+    die "No variation found for '$variation_id'!\n" unless defined $variation;
+
+    my $publication = $pub_ad->fetch_by_dbID($publication_id);
+    die "No publication found for '$publication_id'!\n" unless defined $publication;
+
+    my $variation_rsid = $variation->name();
+    my $publication_pmid = $publication->pmid();
+
+    my @split_attrib_id = split /,/, $attrib_id;
+
+    foreach my $attrib (@split_attrib_id) {
+      print $wrt "$variation_rsid\t$publication_pmid\t$attrib\n" unless ($citations_pheno_feature->{$attrib.'_'.$publication_pmid} || $citations_pheno_feature_attrib->{$attrib.'_'.$publication_pmid});
+    }
+
+  }
+  close($wrt);
+}
+
+# Fetch all attribs that have type citation_source
+# Method used by type = 'phenotype'
+sub get_citation_attribs {
+  my $dba = shift;
+
+  my %attribs;
+
+  my $attrib_value_sth = $dba->dbc()->prepare(qq[ SELECT a.attrib_id, a.value FROM attrib a
+                                                  JOIN attrib_type at ON a.attrib_type_id = at.attrib_type_id
+                                                  WHERE at.code = 'citation_source' ]);
+  $attrib_value_sth->execute();
+  my $citation_attribs = $attrib_value_sth->fetchall_arrayref();
+
+  die "No attribute of type 'citation_source' was found in attrib table!\n" unless defined $citation_attribs->[0];
+
+  foreach my $data (@{$citation_attribs}){
+    my $id = $data->[0];
+    my $name = $data->[1];
+    $attribs{$name} = $id;
+  }
+
+  return \%attribs;
+}
+
 sub usage {
     
-    die "\n\tUsage: import_EPMC.pl -type [ EPMC or UCSC or disease] -species [name] -registry [registry file]
+    die "\n\tUsage: import_EPMC.pl -type [ EPMC or UCSC or phenotype] -species [name] -registry [registry file]
 
 Options:  
           -data [file of citations]   - *required* for EPMC import

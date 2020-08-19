@@ -1,7 +1,7 @@
 =head1 LICENSE
 
 Copyright [1999-2015] Wellcome Trust Sanger Institute and the EMBL-European Bioinformatics Institute
-Copyright [2016-2019] EMBL-European Bioinformatics Institute
+Copyright [2016-2020] EMBL-European Bioinformatics Institute
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,6 +53,8 @@ sub run {
   my $mtmp = $self->param('mtmp_table');
   my $max_distance = $self->param('max_distance');
   my $by_transcript = ($self->param('analysis') eq 'by_transcript') ? 1 : 0;
+  my $prevent_shifting = $self->param('prevent_shifting');
+
 
   my $variations_to_include;
   # if (my $vars = $self->param('variations_to_include')) {
@@ -143,7 +145,16 @@ sub run {
 
   my $files = $self->get_dump_files($stable_id, $tva);
 
+  my %biotypes_to_skip = (
+    'lncRNA' => 1,
+    'processed_pseudogene' => 1,
+    'unprocessed_pseudogene' => 1,
+  );
+
   for my $transcript (@transcripts) {
+    
+    my $biotype = $transcript->biotype;
+
     for my $vf(@vfs) {
 
       if (defined $variations_to_include) {
@@ -158,10 +169,13 @@ sub run {
         -adaptor      => $tva,
         -disambiguate_single_nucleotide_alleles => $disambiguate_sn_alleles,
         -no_transfer    => 1,
+        -no_shift	=> $prevent_shifting, 
       );
 
       # if the variation has no effect on the transcript $tv will be undef
       if ($tv) {#} && ( scalar(@{ $tv->consequence_type }) > 0) ) {
+
+	next if (!scalar(@{ $tv->consequence_type }) && ($tv->distance_to_transcript > $max_distance));
 
         # store now or save to store later? Uncomment out the behaviour you want
         # save to store later uses more memory but means you don't have to sort human TV after the run
@@ -185,8 +199,10 @@ sub run {
         if($mtmp) {
           my $mtmp_data = $tva->_get_mtmp_write_data_from_tv_write_data($data);
           my $mtmp_fh = $files->{MTMP_transcript_variation}->{fh};
-          print $mtmp_fh join("\t", map {defined($_) ? $_ : '\N'} @$_)."\n" for @$mtmp_data;
-        }
+          unless($biotypes_to_skip{$biotype}){ 
+	    print $mtmp_fh join("\t", map {defined($_) ? $_ : '\N'} @$_)."\n" for @$mtmp_data;
+          }
+	}
         ## end block
 
       
