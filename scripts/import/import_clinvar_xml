@@ -452,6 +452,8 @@ sub get_feature{
       $feature{measureXrefs}{$measure->{ID}}{end}   = $loc->{stop}   if $type eq $haplotype_type;
     }
 
+    ## save SPDI canonical
+    $feature{canonicalSPDI} = $measure->{CanonicalSPDI} if defined $measure->{CanonicalSPDI};
 
     ## HGVS genomic - used for allele extraction for novel variants 
     my $assembly_number  = $assembly; ## uses assembly without GRCh
@@ -1037,7 +1039,39 @@ sub get_variant{
         warn "vf:". $vf->name . " allele string: ". $vf->allele_string . "\n";
       }
     } else {
-      warn "no variation feature found for $location_str\n" if $DEBUG ==1;
+      warn "no variation feature found for via search by location identifier: $location_str\n" if $DEBUG ==1;
+
+      #try to match by SPDI: TODO: Q: which case would be caught by spdi+ location strings
+      # that would not be caugth by location_string alone
+      if (defined $record->{feature_info}->{canonicalSPDI} ) {
+        warn "search via SPDI + location\n";
+        my $spdi_str = $record->{feature_info}->{canonicalSPDI};
+        my $var_feat;
+        eval {
+          $var_feat = $var_feat_adaptor->fetch_by_spdi_notation($spdi_str);
+        };
+        if ($@) {
+          warn "SPDI error: " . $@;
+          return undef;
+        }
+
+        my $location_identifier = $var_feat->location_identifier();
+        warn "search SPDI_location_Str: $location_identifier\n";
+
+        my $var_from_db = $var_feat_adaptor->fetch_all_by_location_identifier($location_identifier);
+        # check for > 1 here
+        if ( scalar @$var_from_db == 1 ){
+          return ($var_from_db->[0]->variation(), $var_feats, $alt_allele);
+        } elsif (scalar @$var_from_db > 1) {
+          # check that variation will always have same name for multiple variation features!
+          warn "multiple variation_features found for $spdi_str : \n";
+          foreach my $vf (@$var_from_db){
+            warn "vf:". $vf->name . " allele string: ". $vf->allele_string . "\n";
+          }
+        }
+      } else {
+        warn "no SPDI available for entry\n";
+      }
       return undef;
     }
   } else {
